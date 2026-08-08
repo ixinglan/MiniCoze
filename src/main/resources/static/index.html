@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Workshop 聊天 · 阶段 0</title>
+  <style>
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+           max-width: 760px; margin: 40px auto; padding: 0 16px; color: #222; }
+    h2 { margin-bottom: 4px; }
+    .sub { color: #888; font-size: 13px; margin-bottom: 20px; }
+    #chat { border: 1px solid #eee; border-radius: 10px; padding: 16px;
+            height: 420px; overflow-y: auto; background: #fafafa; }
+    .user { text-align: right; margin: 8px 0; }
+    .user span { background: #d6eaff; padding: 8px 12px; border-radius: 12px; display: inline-block; }
+    .bot { text-align: left; margin: 8px 0; }
+    .bot span { background: #fff; border: 1px solid #eee; padding: 8px 12px;
+                border-radius: 12px; display: inline-block; white-space: pre-wrap; }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    #msg { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; }
+    button { padding: 10px 20px; border: none; background: #2b6cff; color: #fff;
+             border-radius: 8px; cursor: pointer; font-size: 15px; }
+    button:hover { background: #1f5be0; }
+  </style>
+</head>
+<body>
+  <h2>🤖 Spring AI Alibaba 聊天</h2>
+  <div class="sub">阶段 0：ChatClient + SSE 流式输出 · 打开就能聊</div>
+  <div id="chat"></div>
+  <div class="row">
+    <input id="msg" placeholder="输入消息，回车发送…" />
+    <button onclick="send()">发送</button>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const msg = document.getElementById('msg');
+
+    function send() {
+      const text = msg.value.trim();
+      if (!text) return;
+      msg.value = '';
+
+      const u = document.createElement('div');
+      u.className = 'user';
+      u.innerHTML = '<span>' + escapeHtml(text) + '</span>';
+      chat.appendChild(u);
+
+      const b = document.createElement('div');
+      b.className = 'bot';
+      const span = document.createElement('span');
+      b.appendChild(span);
+      chat.appendChild(b);
+      chat.scrollTop = chat.scrollHeight;
+
+      const es = new EventSource('/api/chat/stream?message=' + encodeURIComponent(text));
+      es.onmessage = (e) => {
+        span.textContent += e.data;
+        chat.scrollTop = chat.scrollHeight;
+      };
+      es.onerror = () => es.close();
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    msg.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+  </script>
+</body>
+</html>

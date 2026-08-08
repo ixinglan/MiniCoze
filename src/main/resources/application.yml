@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: ai-workshop
+  ai:
+    # ===== 模型 1：DeepSeek V4（对话 + 视觉理解）=====
+    deepseek:
+      # 推荐用环境变量注入，避免把密钥写进代码/仓库
+      api-key: ${AI_DEEPSEEK_API_KEY:}
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          model: deepseek-v4-flash   # 或 deepseek-v4-pro（更强/更贵）；V4 原生支持图片输入
+
+    # ===== 模型 2：Ollama 本地 embedding（阶段 3 RAG 向量化用）=====
+    # 只启用 embedding，关闭 chat，避免和 DeepSeek 的 ChatModel 注入冲突
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        enabled: false
+      embedding:
+        enabled: true
+        options:
+          model: bge-m3   # 中文 RAG 推荐；也可换 nomic-embed-text（768 维，更轻量）
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.springframework.ai: INFO
