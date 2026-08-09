@@ -3,9 +3,10 @@ package com.ai.aiworkshop.config;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
+import com.ai.aiworkshop.mapper.ChatMemoryMapper;
+import com.ai.aiworkshop.repository.MysqlChatMemoryRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,13 +18,13 @@ public class ChatClientConfig {
      * 阶段 1 新增：对话记忆。
      * MessageWindowChatMemory 是“滑动窗口”记忆：只保留最近 N 条消息，
      * 超过窗口的消息自动丢弃，避免上下文无限膨胀、token 爆炸、费用失控。
-     * 底层用 InMemoryChatMemoryRepository 存在 JVM 内存里（重启即清空）。
-     * 生产可用 JDBC / Cassandra / MongoDB 等持久化仓库替换它。
+     * 底层用 MysqlChatMemoryRepository（MyBatis-Plus）落到 MySQL（mini_coze 库的 chat_memory 表），
+     * 重启不丢、可跨实例共享；会话元数据在 conversation 表。
      */
     @Bean
-    public ChatMemory chatMemory() {
+    public ChatMemory chatMemory(ChatMemoryMapper chatMemoryMapper) {
         return MessageWindowChatMemory.builder()
-                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+                .chatMemoryRepository(new MysqlChatMemoryRepository(chatMemoryMapper))
                 .maxMessages(20)   // 保留最近 20 条（含用户+助手），可按需调大
                 .build();
     }

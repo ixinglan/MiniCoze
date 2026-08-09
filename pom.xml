@@ -23,6 +23,7 @@
         <spring-ai.version>1.1.2</spring-ai.version>
         <spring-ai-alibaba.version>1.1.2.2</spring-ai-alibaba.version>
         <spring-ai-alibaba-extensions.version>1.1.2.1</spring-ai-alibaba-extensions.version>
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
     </properties>
 
     <dependencyManagement>
@@ -47,6 +48,14 @@
                 <version>${spring-ai-alibaba-extensions.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- 强制 mybatis-spring 版本：mybatis-plus-boot-starter 默认锁了 2.1.2（Spring 5 时代），
+                 而 Spring Boot 3.5 用 Spring 6.2，要求 factoryBeanObjectType 为 Class 类型，
+                 2.1.2 写入的是 String 会导致 Mapper 注册失败。3.0.x 已适配 Spring 6.2。 -->
+            <dependency>
+                <groupId>org.mybatis</groupId>
+                <artifactId>mybatis-spring</artifactId>
+                <version>3.0.6</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -80,6 +89,18 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-client-chat</artifactId>
+        </dependency>
+
+        <!-- 阶段 1 MySQL 持久化记忆：MyBatis-Plus（取代原生 JdbcTemplate）+ MySQL 驱动 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- 备注：阶段 3(RAG 向量化) 和 阶段 5(多模态) DeepSeek 不提供 embedding / 图片能力，

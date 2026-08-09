@@ -3,64 +3,157 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Workshop 聊天 · 阶段 1</title>
+  <title>AI Workshop 聊天 · 阶段 1（MySQL 持久化）</title>
   <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
     body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-           max-width: 760px; margin: 40px auto; padding: 0 16px; color: #222; }
-    h2 { margin-bottom: 4px; }
-    .sub { color: #888; font-size: 13px; margin-bottom: 12px; }
-    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .toolbar small { color: #aaa; }
-    #chat { border: 1px solid #eee; border-radius: 10px; padding: 16px;
-            height: 420px; overflow-y: auto; background: #fafafa; }
-    .user { text-align: right; margin: 8px 0; }
-    .user span { background: #d6eaff; padding: 8px 12px; border-radius: 12px; display: inline-block; }
-    .bot { text-align: left; margin: 8px 0; }
+           color: #222; background: #fff; }
+    .app { display: flex; height: 100vh; }
+    /* 左侧会话栏 */
+    .sidebar { width: 260px; flex: 0 0 260px; background: #f5f6f8;
+               border-right: 1px solid #eaeaea; display: flex; flex-direction: column; }
+    .sidebar h1 { font-size: 15px; margin: 0; padding: 16px; color: #333;
+                  border-bottom: 1px solid #eaeaea; }
+    #newBtn { margin: 12px; padding: 10px; border: none; background: #2b6cff; color: #fff;
+              border-radius: 8px; cursor: pointer; font-size: 14px; }
+    #newBtn:hover { background: #1f5be0; }
+    .conv-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+    .conv-item { display: flex; align-items: center; justify-content: space-between;
+                 padding: 10px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; }
+    .conv-item:hover { background: #eceef2; }
+    .conv-item.active { background: #dbe7ff; }
+    .conv-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                  font-size: 14px; }
+    .conv-item .del { border: none; background: transparent; color: #bbb; cursor: pointer;
+                      font-size: 13px; padding: 2px 6px; border-radius: 6px; }
+    .conv-item .del:hover { background: #ffd9d9; color: #e23; }
+    /* 右侧主区 */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar { padding: 14px 20px; border-bottom: 1px solid #eee; font-size: 14px; color: #666; }
+    #chat { flex: 1; overflow-y: auto; padding: 20px; background: #fafafa; }
+    .user { text-align: right; margin: 10px 0; }
+    .user span { background: #d6eaff; padding: 8px 12px; border-radius: 12px;
+                 display: inline-block; max-width: 75%; white-space: pre-wrap; text-align: left; }
+    .bot { text-align: left; margin: 10px 0; }
     .bot span { background: #fff; border: 1px solid #eee; padding: 8px 12px;
-                border-radius: 12px; display: inline-block; white-space: pre-wrap; }
-    .row { display: flex; gap: 8px; margin-top: 12px; }
+                border-radius: 12px; display: inline-block; max-width: 75%; white-space: pre-wrap; }
+    .row { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid #eee; }
     #msg { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; }
-    button { padding: 10px 20px; border: none; background: #2b6cff; color: #fff;
-             border-radius: 8px; cursor: pointer; font-size: 15px; }
-    button:hover { background: #1f5be0; }
-    .ghost { background: #eee; color: #333; }
-    .ghost:hover { background: #ddd; }
+    .send { padding: 10px 20px; border: none; background: #2b6cff; color: #fff;
+            border-radius: 8px; cursor: pointer; font-size: 15px; }
+    .send:hover { background: #1f5be0; }
+    .empty { color: #aaa; text-align: center; margin-top: 40px; font-size: 14px; }
   </style>
 </head>
 <body>
-  <h2>🤖 Spring AI 聊天</h2>
-  <div class="sub">阶段 1：ChatMemory + Advisor 多轮记忆 · 同一会话内能记住上下文</div>
-  <div class="toolbar">
-    <small id="conv">会话ID: -</small>
-    <button class="ghost" onclick="newChat()">新对话</button>
-  </div>
-  <div id="chat"></div>
-  <div class="row">
-    <input id="msg" placeholder="输入消息，回车发送…" />
-    <button onclick="send()">发送</button>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>💬 我的会话</h1>
+      <button id="newBtn" onclick="newChat()">+ 新对话</button>
+      <div id="convList" class="conv-list"></div>
+    </aside>
+    <main class="main">
+      <div class="topbar" id="curTitle">未选择会话</div>
+      <div id="chat"><div class="empty">点左侧“+ 新对话”开始，或选择一个历史会话</div></div>
+      <div class="row">
+        <input id="msg" placeholder="输入消息，回车发送…" />
+        <button class="send" onclick="send()">发送</button>
+      </div>
+    </main>
   </div>
 
   <script>
     const chat = document.getElementById('chat');
     const msg = document.getElementById('msg');
-    const convLabel = document.getElementById('conv');
+    const convList = document.getElementById('convList');
+    const curTitle = document.getElementById('curTitle');
 
-    // 会话 ID：存 sessionStorage，刷新不丢、新标签页独立；
-    // 消息也存 sessionStorage，刷新后重新渲染，避免"刷新就看不到历史"
-    function getConvId() {
-      let id = sessionStorage.getItem('convId');
-      if (!id) { id = 'conv-' + crypto.randomUUID(); sessionStorage.setItem('convId', id); }
-      return id;
+    // 只存“当前会话 ID”在 sessionStorage（刷新后重新选中并从后端拉历史），不再存消息本身
+    let currentConvId = sessionStorage.getItem('currentConvId') || null;
+    let convListData = [];
+
+    async function loadConversations() {
+      const res = await fetch('/api/chat/conversations');
+      convListData = await res.json();
+      applySelection();
     }
 
-    let messages = [];
-    function loadMessages() {
-      try { messages = JSON.parse(sessionStorage.getItem('chatMsgs')) || []; }
-      catch (e) { messages = []; }
+    // 根据 currentConvId 决定选中哪个会话并加载历史
+    function applySelection() {
+      if (currentConvId && convListData.some(c => c.id === currentConvId)) {
+        // 保持当前选择
+      } else if (convListData.length > 0) {
+        currentConvId = convListData[0].id;
+        sessionStorage.setItem('currentConvId', currentConvId);
+      } else {
+        currentConvId = null;
+        sessionStorage.removeItem('currentConvId');
+      }
+      renderConversations();
+      if (currentConvId) loadHistory(currentConvId);
+      else curTitle.textContent = '未选择会话';
     }
-    function saveMessages() {
-      sessionStorage.setItem('chatMsgs', JSON.stringify(messages));
+
+    function renderConversations() {
+      convList.innerHTML = '';
+      for (const c of convListData) {
+        const item = document.createElement('div');
+        item.className = 'conv-item' + (c.id === currentConvId ? ' active' : '');
+        const title = document.createElement('span');
+        title.className = 'conv-title';
+        title.textContent = c.title || '新对话';
+        title.onclick = () => selectConversation(c.id);
+        const del = document.createElement('button');
+        del.className = 'del';
+        del.textContent = '✕';
+        del.title = '删除会话';
+        del.onclick = (e) => { e.stopPropagation(); deleteConversation(c.id); };
+        item.appendChild(title);
+        item.appendChild(del);
+        convList.appendChild(item);
+      }
     }
+
+    async function selectConversation(id) {
+      currentConvId = id;
+      sessionStorage.setItem('currentConvId', id);
+      renderConversations();
+      await loadHistory(id);
+    }
+
+    async function loadHistory(id) {
+      const res = await fetch('/api/chat/history?conversationId=' + encodeURIComponent(id));
+      const history = await res.json();
+      chat.innerHTML = '';
+      for (const m of history) appendBubble(m.role === 'user' ? 'user' : 'bot', m.content || '');
+      chat.scrollTop = chat.scrollHeight;
+      const c = convListData.find(x => x.id === id);
+      curTitle.textContent = c ? (c.title || '新对话') : '未选择会话';
+    }
+
+    async function newChat() {
+      const res = await fetch('/api/chat/conversations', { method: 'POST' });
+      const data = await res.json();
+      currentConvId = data.id;
+      sessionStorage.setItem('currentConvId', currentConvId);
+      convListData = [];
+      chat.innerHTML = '';
+      curTitle.textContent = '新对话';
+      await loadConversations();
+    }
+
+    async function deleteConversation(id) {
+      await fetch('/api/chat/conversation?conversationId=' + encodeURIComponent(id), { method: 'DELETE' });
+      if (id === currentConvId) {
+        currentConvId = null;
+        sessionStorage.removeItem('currentConvId');
+        chat.innerHTML = '<div class="empty">点左侧“+ 新对话”开始，或选择一个历史会话</div>';
+        curTitle.textContent = '未选择会话';
+      }
+      await loadConversations();
+    }
+
     function appendBubble(role, text) {
       const d = document.createElement('div');
       d.className = role === 'user' ? 'user' : 'bot';
@@ -70,57 +163,34 @@
       chat.appendChild(d);
       return span;
     }
-    function renderAll() {
-      chat.innerHTML = '';
-      for (const m of messages) appendBubble(m.role, m.text);
-      chat.scrollTop = chat.scrollHeight;
-    }
 
-    // 初始化：恢复会话 ID 与历史消息（刷新后聊天记录还在）
-    convLabel.textContent = '会话ID: ' + getConvId();
-    loadMessages();
-    renderAll();
-
-    function send() {
+    async function send() {
       const text = msg.value.trim();
       if (!text) return;
+      if (!currentConvId) await newChat();  // 极端情况兜底：没有会话就先建一个
       msg.value = '';
 
-      const convId = getConvId();
-      messages.push({ role: 'user', text });
       appendBubble('user', text);
-      saveMessages();
-
-      const botMsg = { role: 'bot', text: '' };
-      messages.push(botMsg);
-      const botSpan = appendBubble('bot', '');
       chat.scrollTop = chat.scrollHeight;
 
+      const botSpan = appendBubble('bot', '');
       const es = new EventSource('/api/chat/stream?message=' + encodeURIComponent(text)
-                                  + '&conversationId=' + encodeURIComponent(convId));
+                                  + '&conversationId=' + encodeURIComponent(currentConvId));
       es.onmessage = (e) => {
-        botMsg.text += e.data;
-        botSpan.textContent = botMsg.text;
+        botSpan.textContent += e.data;
         chat.scrollTop = chat.scrollHeight;
-        saveMessages();
       };
-      es.onerror = () => es.close();
-    }
-
-    // 新对话：清掉服务端该会话的记忆 + 本地换新 ID + 清空聊天框与缓存
-    async function newChat() {
-      const convId = getConvId();
-      try {
-        await fetch('/api/chat/clear?conversationId=' + encodeURIComponent(convId), { method: 'POST' });
-      } catch (e) { /* 忽略 */ }
-      sessionStorage.removeItem('convId');
-      sessionStorage.removeItem('chatMsgs');
-      messages = [];
-      convLabel.textContent = '会话ID: ' + getConvId();
-      chat.innerHTML = '';
+      // 服务端 SseEmitter 完成后连接关闭，触发 onerror：关闭并刷新列表（更新标题/排序）
+      es.onerror = () => {
+        es.close();
+        loadConversations();
+      };
     }
 
     msg.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+    // 页面加载：拉取会话列表，自动选中并还原历史
+    loadConversations();
   </script>
 </body>
 </html>
