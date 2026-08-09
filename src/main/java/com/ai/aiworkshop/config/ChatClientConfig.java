@@ -42,4 +42,17 @@ public class ChatClientConfig {
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
     }
+
+    /**
+     * 阶段 2 专用：无状态的结构化解析客户端。
+     * 关键区别：不挂 MessageChatMemoryAdvisor —— 结构化解析是一次性的信息抽取，
+     * 不该写进多轮对话记忆（chat_memory / chat_log），否则会污染历史、浪费 token。
+     * 它和 chatClient 共用同一个 deepSeekChatModel，只是“身份/职责”不同。
+     */
+    @Bean
+    public ChatClient parsingClient(@Qualifier("deepSeekChatModel") ChatModel chatModel) {
+        return ChatClient.builder(chatModel)
+                .defaultSystem("你是一个严谨的结构化信息抽取助手，只输出符合要求的 JSON，不要包含任何解释性文字。")
+                .build();
+    }
 }
