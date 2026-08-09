@@ -30,6 +30,20 @@ public class ChatController {
     /**
      * 流式对话：浏览器用 EventSource 订阅，逐字显示。
      * 在 Servlet 容器下用 SseEmitter 把 Reactor 的 Flux 推给前端。
+     *
+     * 代码解读：
+     * 1. @GetMapping 指定路径 /api/chat/stream，produces 声明返回格式为 text/event-stream（SSE 协议）。
+     * 2. new SseEmitter(0L)：创建 SSE 发射器，参数 0 表示不限制超时时间，长连接一直保持。
+     * 3. chatService.stream(message)：调用 ChatService 的流式方法，返回 Flux<String>，
+     *    这是一个响应式流，会逐个 token（文字片段）推送数据。
+     * 4. .subscribe(...)：订阅这个 Flux 流，传入三个回调：
+     *    - onNext(token)：每收到一个 token，就通过 emitter.send(token) 推送给浏览器。
+     *      如果发送时发生 IOException（比如客户端断开连接），调用 completeWithError 结束。
+     *    - onError(throwable)：流中出现异常时，调用 emitter.completeWithError 通知浏览器出错。
+     *    - onComplete()：流正常结束时，调用 emitter.complete 关闭 SSE 连接。
+     * 5. return emitter：立即返回 SseEmitter 对象给 Spring，Spring 会用这个 emitter 异步推送数据。
+     *
+     * 整体效果：浏览器用 EventSource 连接到这个接口后，AI 的回答会像打字机一样逐字显示。
      */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestParam String message) {

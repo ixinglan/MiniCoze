@@ -23,7 +23,7 @@ spring:
           model: bge-m3   # 中文 RAG 推荐；也可换 nomic-embed-text（768 维，更轻量）
 
 server:
-  port: 8080
+  port: 9999
 
 logging:
   level:
