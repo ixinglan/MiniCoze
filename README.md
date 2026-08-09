@@ -34,6 +34,7 @@
    - `GET  /api/chat/history?conversationId=xxx`（拉取某会话历史）
    - `DELETE /api/chat/conversation?conversationId=xxx`（彻底删除会话：消息 + 元数据）
    - `GET  /api/chat/embed?text=你好世界`（验证 Ollama embedding 是否就绪）
+- `POST /api/parse/ticket`（JSON `{ "text": "..." }`，返回结构化工单 TaskTicket JSON；演示页 http://localhost:9999/ticket.html）
 
 ## 双模型骨架说明
 - **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出、图片理解（V4 原生多模态输入）。
@@ -47,16 +48,26 @@
   - `conversation`：会话元数据（标题、更新时间，供左侧会话列表）
 - 自定义 `MysqlChatMemoryRepository implements ChatMemoryRepository`；`schema.sql` 由 `spring.sql.init.mode=always` 启动自动建表。
 - 前端改为"以会话 id 为中心"：历史全部从 `/api/chat/history` 拉取；左侧会话列表可新建 / 切换 / 删除，只有点删除才真删。
+- 扩展：双表分离（`chat_memory` 喂模型 + `chat_log` 完整日志，append-only 不丢历史）
+
+## 阶段 2 结构化输出（PromptTemplate + BeanOutputConverter）
+- 目标：把"模型的自由文本"收敛成"规整的 Java 对象"，让 LLM 从"能说"变成"能干活"——这是 Agent 工作台能接 API / 落库 / 编排的前提。
+- 场景落地：自然语言需求 → `TaskTicket`（title / category / priority / dueDate / tags / description / needFollowUp 七字段）。
+- 两个 Spring AI 原语：`BeanOutputConverter<TaskTicket>`（标准三步——`new` 单例 → `getFormat()` 拿 JSON Schema 塞 prompt → `convert(文本)` 得对象）；`PromptTemplate`（`{占位符}` 模板 + `.variables(Map)` 渲染）。
+- 关键设计：`parsingClient` 无状态（不挂记忆 Advisor，解析不污染 `chat_memory` / `chat_log`）；目标类用 `@JsonPropertyDescription` 提升抽取准确率；Converter 做成 `final` 单例复用。
+- 端点 `POST /api/parse/ticket` + 演示页 `ticket.html`。
 
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
 - [x] 阶段 1：多轮对话记忆（`ChatMemory` 滑动窗口 + `MessageChatMemoryAdvisor` + 按 conversationId 隔离）
 - [x] 阶段 1 持久化：记忆落 MySQL（`MysqlChatMemoryRepository` + `conversation`/`chat_memory` 表）+ 前端会话列表面板
+- [x] 阶段 1 扩展：双表分离（`chat_memory` 喂模型 + `chat_log` 完整日志，append-only 不丢历史）
+- [x] 阶段 2：结构化输出（`PromptTemplate` + `BeanOutputConverter`，自然语言 → TaskTicket 工单对象）
 
 ## 学习计划（每阶段 = 给产品加一块能力）
 - [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
-- [ ] 阶段 2｜结构化输出与提示词：`PromptTemplate` + `BeanOutputConverter`
+- [x] 阶段 2｜结构化输出与提示词：`PromptTemplate` + `BeanOutputConverter`
 - [ ] 阶段 3｜RAG 检索增强：`document-reader-*` → `TokenTextSplitter` → Embedding → 向量库 → `QuestionAnswerAdvisor` / RagWay
 - [ ] 阶段 4｜工具调用：`@Tool` + `FunctionToolCallback`（让模型调你的 Spring Bean）
 - [ ] 阶段 5｜多模态：通义千问图片理解 + 通义万相文生图
