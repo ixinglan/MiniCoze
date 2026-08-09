@@ -1,5 +1,6 @@
 package com.ai.aiworkshop.controller;
 
+import com.ai.aiworkshop.service.ChatLogService;
 import com.ai.aiworkshop.service.ChatService;
 import com.ai.aiworkshop.service.ConversationService;
 import com.ai.aiworkshop.service.EmbeddingService;
@@ -25,26 +26,31 @@ public class ChatController {
     private final ChatService chatService;
     private final EmbeddingService embeddingService;
     private final ConversationService conversationService;
+    private final ChatLogService chatLogService;
 
     public ChatController(ChatService chatService, EmbeddingService embeddingService,
-                          ConversationService conversationService) {
+                          ConversationService conversationService, ChatLogService chatLogService) {
         this.chatService = chatService;
         this.embeddingService = embeddingService;
         this.conversationService = conversationService;
+        this.chatLogService = chatLogService;
     }
 
     /**
      * 流式对话：浏览器用 EventSource 订阅，逐字显示。
      * conversationId 用于隔离不同会话的记忆（缺省 "default" 表示共享一个会话）。
-     * 每次发送都会 touch 会话（刷新排序 + 首句设标题）。
+     * 每次发送都会 touch 会话（刷新排序 + 首句设标题），并把本轮问答追加进 chat_log（完整日志）。
      */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestParam String message,
                              @RequestParam(required = false, defaultValue = "default") String conversationId) {
         conversationService.touch(conversationId, message);
+        chatLogService.append(conversationId, "user", message);   // 记完整日志：用户侧
         SseEmitter emitter = new SseEmitter(0L); // 0 = 不限超时
+        StringBuilder fullReply = new StringBuilder();
         chatService.stream(message, conversationId).subscribe(
                 token -> {
+                    fullReply.append(token);
                     try {
                         emitter.send(token);
                     } catch (IOException e) {
@@ -52,7 +58,11 @@ public class ChatController {
                     }
                 },
                 emitter::completeWithError,
-                emitter::complete
+                () -> {
+                    // 流结束：把这一轮完整助手回复也记入 chat_log（前端历史从此表读，不随窗口裁剪丢失）
+                    chatLogService.append(conversationId, "assistant", fullReply.toString());
+                    emitter.complete();
+                }
         );
         return emitter;
     }
@@ -63,7 +73,10 @@ public class ChatController {
         String message = body.get("message");
         String conversationId = body.getOrDefault("conversationId", "default");
         conversationService.touch(conversationId, message);
-        return Map.of("reply", chatService.chat(message, conversationId));
+        chatLogService.append(conversationId, "user", message);   // 记完整日志：用户侧
+        String reply = chatService.chat(message, conversationId);
+        chatLogService.append(conversationId, "assistant", reply); // 记完整日志：助手侧
+        return Map.of("reply", reply);
     }
 
     /** 会话列表（左侧栏） */

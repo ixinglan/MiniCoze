@@ -15,17 +15,21 @@ import java.util.stream.Collectors;
 
 /**
  * 会话管理服务（MyBatis-Plus 版）：维护 conversation 表（左侧栏用）与 chat_memory 表的级联删除。
- * 记忆本身由 MysqlChatMemoryRepository 负责，这里只管“会话元数据”与“历史读取/删除”。
+ * 记忆本身由 MysqlChatMemoryRepository 负责；完整历史读取改走 chat_log（见 ChatLogService），
+ * 这样窗口裁剪只影响喂模型的 chat_memory，不影响用户回看完整历史。
  */
 @Service
 public class ConversationService {
 
     private final ConversationMapper conversationMapper;
     private final ChatMemoryMapper chatMemoryMapper;
+    private final ChatLogService chatLogService;
 
-    public ConversationService(ConversationMapper conversationMapper, ChatMemoryMapper chatMemoryMapper) {
+    public ConversationService(ConversationMapper conversationMapper, ChatMemoryMapper chatMemoryMapper,
+                               ChatLogService chatLogService) {
         this.conversationMapper = conversationMapper;
         this.chatMemoryMapper = chatMemoryMapper;
+        this.chatLogService = chatLogService;
     }
 
     /** 新建一个会话，返回会话 ID（供前端“新对话”按钮使用） */
@@ -51,25 +55,21 @@ public class ConversationService {
         }).collect(Collectors.toList());
     }
 
-    /** 某个会话的历史消息（前端点开会话时拉取）。role 已转小写：user / assistant / system */
+    /**
+     * 某个会话的完整历史（前端点开会话时拉取）。
+     * 关键：改从 chat_log 读，而不是被窗口裁剪的 chat_memory，
+     * 因此即使对话超过 20 条（10 轮），用户也能回看全部历史、不会缺头。
+     */
     public List<Map<String, Object>> getHistory(String conversationId) {
-        List<ChatMemoryDO> list = chatMemoryMapper.selectList(
-                Wrappers.<ChatMemoryDO>query()
-                        .eq("conversation_id", conversationId)
-                        .orderByAsc("message_index"));
-        return list.stream().map(d -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("role", d.getMessageType().toLowerCase());
-            m.put("content", d.getContent());
-            return m;
-        }).collect(Collectors.toList());
+        return chatLogService.getFullHistory(conversationId);
     }
 
-    /** 彻底删除一个会话：同时清掉消息明细与元数据（手动点删除时调用） */
+    /** 彻底删除一个会话：清理会话元数据 + 窗口记忆 + 完整日志（手动点删除时调用） */
     public void deleteConversation(String conversationId) {
         conversationMapper.deleteById(conversationId);
         chatMemoryMapper.delete(
                 Wrappers.<ChatMemoryDO>update().eq("conversation_id", conversationId));
+        chatLogService.deleteByConversationId(conversationId);
     }
 
     /**

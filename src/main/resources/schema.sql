@@ -21,3 +21,17 @@ CREATE TABLE IF NOT EXISTS conversation (
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 完整对话日志表：append-only，永不随窗口裁剪删除（给人回看完整历史用）
+-- 与 chat_memory（喂模型的滑动窗口）职责分离：
+--   chat_memory：只留最近 N 条，超窗即物理删除（省 token、控成本）
+--   chat_log  ：永久保留每一次问答，前端历史列表从这张表读，确保“超 20 条也不会缺头”
+CREATE TABLE IF NOT EXISTS chat_log (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    conversation_id VARCHAR(64)  NOT NULL,
+    role            VARCHAR(16)  NOT NULL,   -- user / assistant / system
+    content         TEXT,
+    created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_cl_conv (conversation_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
