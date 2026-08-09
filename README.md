@@ -25,10 +25,11 @@
    ```bash
    mvn spring-boot:run
    ```
-5. 打开浏览器：http://localhost:8080/ 即可对话。
+5. 打开浏览器：http://localhost:9999/ 即可对话。
    接口：
-   - `GET /api/chat/stream?message=你好`（SSE 流式）
-   - `POST /api/chat`（JSON `{ "message": "..." }`）
+   - `GET /api/chat/stream?message=你好&conversationId=conv-1`（SSE 流式，多轮记忆靠 conversationId 隔离）
+   - `POST /api/chat`（JSON `{ "message": "...", "conversationId": "conv-1" }`）
+   - `POST /api/chat/clear?conversationId=conv-1`（清空该会话记忆，“新对话”按钮调用）
    - `GET /api/chat/embed?text=你好世界`（验证 Ollama embedding 是否就绪）
 
 ## 双模型骨架说明
@@ -40,9 +41,10 @@
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
+- [x] 阶段 1：多轮对话记忆（`ChatMemory` 滑动窗口 + `MessageChatMemoryAdvisor` + 按 conversationId 隔离）
 
 ## 学习计划（每阶段 = 给产品加一块能力）
-- [ ] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
+- [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
 - [ ] 阶段 2｜结构化输出与提示词：`PromptTemplate` + `BeanOutputConverter`
 - [ ] 阶段 3｜RAG 检索增强：`document-reader-*` → `TokenTextSplitter` → Embedding → 向量库 → `QuestionAnswerAdvisor` / RagWay
 - [ ] 阶段 4｜工具调用：`@Tool` + `FunctionToolCallback`（让模型调你的 Spring Bean）

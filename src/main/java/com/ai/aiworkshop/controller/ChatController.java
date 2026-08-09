@@ -2,6 +2,7 @@ package com.ai.aiworkshop.controller;
 
 import com.ai.aiworkshop.service.ChatService;
 import com.ai.aiworkshop.service.EmbeddingService;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,34 +22,23 @@ public class ChatController {
 
     private final ChatService chatService;
     private final EmbeddingService embeddingService;
+    private final ChatMemory chatMemory;
 
-    public ChatController(ChatService chatService, EmbeddingService embeddingService) {
+    public ChatController(ChatService chatService, EmbeddingService embeddingService, ChatMemory chatMemory) {
         this.chatService = chatService;
         this.embeddingService = embeddingService;
+        this.chatMemory = chatMemory;
     }
 
     /**
      * 流式对话：浏览器用 EventSource 订阅，逐字显示。
-     * 在 Servlet 容器下用 SseEmitter 把 Reactor 的 Flux 推给前端。
-     *
-     * 代码解读：
-     * 1. @GetMapping 指定路径 /api/chat/stream，produces 声明返回格式为 text/event-stream（SSE 协议）。
-     * 2. new SseEmitter(0L)：创建 SSE 发射器，参数 0 表示不限制超时时间，长连接一直保持。
-     * 3. chatService.stream(message)：调用 ChatService 的流式方法，返回 Flux<String>，
-     *    这是一个响应式流，会逐个 token（文字片段）推送数据。
-     * 4. .subscribe(...)：订阅这个 Flux 流，传入三个回调：
-     *    - onNext(token)：每收到一个 token，就通过 emitter.send(token) 推送给浏览器。
-     *      如果发送时发生 IOException（比如客户端断开连接），调用 completeWithError 结束。
-     *    - onError(throwable)：流中出现异常时，调用 emitter.completeWithError 通知浏览器出错。
-     *    - onComplete()：流正常结束时，调用 emitter.complete 关闭 SSE 连接。
-     * 5. return emitter：立即返回 SseEmitter 对象给 Spring，Spring 会用这个 emitter 异步推送数据。
-     *
-     * 整体效果：浏览器用 EventSource 连接到这个接口后，AI 的回答会像打字机一样逐字显示。
+     * conversationId 用于隔离不同会话的记忆（缺省 "default" 表示共享一个会话）。
      */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestParam String message) {
+    public SseEmitter stream(@RequestParam String message,
+                             @RequestParam(required = false, defaultValue = "default") String conversationId) {
         SseEmitter emitter = new SseEmitter(0L); // 0 = 不限超时
-        chatService.stream(message).subscribe(
+        chatService.stream(message, conversationId).subscribe(
                 token -> {
                     try {
                         emitter.send(token);
@@ -62,16 +52,24 @@ public class ChatController {
         return emitter;
     }
 
-    /** 非流式对话：POST JSON { "message": "..." } -> { "reply": "..." } */
+    /** 非流式对话：POST JSON { "message": "...", "conversationId": "..." } -> { "reply": "..." } */
     @PostMapping
     public Map<String, String> chat(@RequestBody Map<String, String> body) {
-        return Map.of("reply", chatService.chat(body.get("message")));
+        String message = body.get("message");
+        String conversationId = body.getOrDefault("conversationId", "default");
+        return Map.of("reply", chatService.chat(message, conversationId));
+    }
+
+    /** 清空某个会话的记忆（前端“新对话”按钮调用），让助手“忘记”之前的内容 */
+    @PostMapping("/clear")
+    public Map<String, Object> clear(@RequestParam(required = false, defaultValue = "default") String conversationId) {
+        chatMemory.clear(conversationId);
+        return Map.of("ok", true, "cleared", conversationId);
     }
 
     /**
      * 验证第二个模型（Ollama embedding）是否可用。
      * 直接浏览器访问：/api/chat/embed?text=你好世界
-     * 返回向量维度 + 前 5 个分量，方便确认 Ollama 已启动且模型已拉取。
      */
     @GetMapping("/embed")
     public Map<String, Object> embed(@RequestParam String text) {

@@ -70,6 +70,18 @@
             <artifactId>spring-ai-starter-model-ollama</artifactId>
         </dependency>
 
+        <!-- 阶段 1 显式引入（此前由 starter 传递依赖）：
+             spring-ai-model 提供 ChatMemory / MessageWindowChatMemory；
+             spring-ai-client-chat 提供 ChatClient / MessageChatMemoryAdvisor。 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-client-chat</artifactId>
+        </dependency>
+
         <!-- 备注：阶段 3(RAG 向量化) 和 阶段 5(多模态) DeepSeek 不提供 embedding / 图片能力，
              到时再按需加回 com.alibaba.cloud.ai:spring-ai-alibaba-starter-dashscope 做 embedding / 视觉，
              并配置多模型 Bean（按 @Qualifier 区分）。本阶段先单模型跑通。 -->
