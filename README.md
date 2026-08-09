@@ -35,6 +35,8 @@
    - `DELETE /api/chat/conversation?conversationId=xxx`（彻底删除会话：消息 + 元数据）
    - `GET  /api/chat/embed?text=你好世界`（验证 Ollama embedding 是否就绪）
 - `POST /api/parse/ticket`（JSON `{ "text": "..." }`，返回结构化工单 TaskTicket JSON；演示页 http://localhost:9999/ticket.html）
+- `GET  /api/rag/stream?message=...&conversationId=rag`（RAG 流式问答，基于知识库检索回答）
+- `POST /api/rag`（JSON `{ "message": "...", "conversationId": "rag" }`，非流式 RAG 问答；演示页 http://localhost:9999/rag.html）
 
 ## 双模型骨架说明
 - **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出、图片理解（V4 原生多模态输入）。
@@ -57,6 +59,12 @@
 - 关键设计：`parsingClient` 无状态（不挂记忆 Advisor，解析不污染 `chat_memory` / `chat_log`）；目标类用 `@JsonPropertyDescription` 提升抽取准确率；Converter 做成 `final` 单例复用。
 - 端点 `POST /api/parse/ticket` + 演示页 `ticket.html`。
 
+## 阶段 3 RAG 检索增强（SimpleVectorStore + QuestionAnswerAdvisor + TokenTextSplitter）
+- 目标：让模型"基于你的私有资料回答"，而不是凭空编造——这是知识库产品的核心能力。
+- 流程：启动扫描 `classpath:rag-docs/*` 的 markdown/text → 构造 Document（带 source 元数据）→ `TokenTextSplitter` 切片 → 写入内存向量库（SimpleVectorStore，底层用 Ollama bge-m3 向量化）。
+- 检索增强：`ragClient` 挂载 `QuestionAnswerAdvisor(vectorStore)`，每次提问前先从向量库取 topK 最相关片段注入 prompt；并叠加 `MessageChatMemoryAdvisor` 保留多轮记忆（conversationId 隔离）。
+- 端点 `GET /api/rag/stream` + `POST /api/rag` + 演示页 `rag.html`。知识库文档放在 `src/main/resources/rag-docs/`，新增 .md/.txt 即可被自动索引。
+
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
@@ -64,11 +72,12 @@
 - [x] 阶段 1 持久化：记忆落 MySQL（`MysqlChatMemoryRepository` + `conversation`/`chat_memory` 表）+ 前端会话列表面板
 - [x] 阶段 1 扩展：双表分离（`chat_memory` 喂模型 + `chat_log` 完整日志，append-only 不丢历史）
 - [x] 阶段 2：结构化输出（`PromptTemplate` + `BeanOutputConverter`，自然语言 → TaskTicket 工单对象）
+- [x] 阶段 3：RAG 检索增强（SimpleVectorStore + QuestionAnswerAdvisor + TokenTextSplitter，启动加载 rag-docs 建索引）
 
 ## 学习计划（每阶段 = 给产品加一块能力）
 - [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
 - [x] 阶段 2｜结构化输出与提示词：`PromptTemplate` + `BeanOutputConverter`
-- [ ] 阶段 3｜RAG 检索增强：`document-reader-*` → `TokenTextSplitter` → Embedding → 向量库 → `QuestionAnswerAdvisor` / RagWay
+- [x] 阶段 3｜RAG 检索增强：`document-reader-*` → `TokenTextSplitter` → Embedding → 向量库 → `QuestionAnswerAdvisor` / RagWay
 - [ ] 阶段 4｜工具调用：`@Tool` + `FunctionToolCallback`（让模型调你的 Spring Bean）
 - [ ] 阶段 5｜多模态：通义千问图片理解 + 通义万相文生图
 - [ ] 阶段 6｜Agent 编排：`spring-ai-alibaba-graph-core` → `ReactAgent` → 多智能体（Sequential / Routing / Supervisor）

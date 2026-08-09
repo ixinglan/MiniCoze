@@ -103,6 +103,16 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- 阶段 3 RAG：向量库核心 + 检索增强 Advisor（QuestionAnswerAdvisor）+ 文档读取（Tika 通用，支持 md/pdf/txt/docx） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-vector-store</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+
         <!-- 备注：阶段 3(RAG 向量化) 和 阶段 5(多模态) DeepSeek 不提供 embedding / 图片能力，
              到时再按需加回 com.alibaba.cloud.ai:spring-ai-alibaba-starter-dashscope 做 embedding / 视觉，
              并配置多模型 Bean（按 @Qualifier 区分）。本阶段先单模型跑通。 -->

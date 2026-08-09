@@ -2,11 +2,14 @@ package com.ai.aiworkshop.config;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import com.ai.aiworkshop.mapper.ChatMemoryMapper;
 import com.ai.aiworkshop.repository.MysqlChatMemoryRepository;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -53,6 +56,32 @@ public class ChatClientConfig {
     public ChatClient parsingClient(@Qualifier("deepSeekChatModel") ChatModel chatModel) {
         return ChatClient.builder(chatModel)
                 .defaultSystem("你是一个严谨的结构化信息抽取助手，只输出符合要求的 JSON，不要包含任何解释性文字。")
+                .build();
+    }
+
+    /**
+     * 阶段 3 专用：RAG 检索增强客户端。
+     * 挂着两个 Advisor：
+     *  1) QuestionAnswerAdvisor(vectorStore)：每次提问前，先从向量库检索最相关的文档片段，
+     *     注入 prompt，让模型"基于资料回答"而不是凭空编造；similarityThreshold 过滤弱相关。
+     *  2) MessageChatMemoryAdvisor(chatMemory)：RAG 对话也带多轮记忆（按 conversationId 隔离，
+     *     与 /api/chat 共享同一记忆仓库但用不同 conversationId 互不干扰）。
+     * 检索增强 + 记忆 叠加，得到"既懂你的私有资料、又记得上下文"的助手。
+     */
+    @Bean
+    public ChatClient ragClient(@Qualifier("deepSeekChatModel") ChatModel chatModel,
+                               ChatMemory chatMemory,
+                               VectorStore vectorStore) {
+        QuestionAnswerAdvisor qaAdvisor = QuestionAnswerAdvisor.builder(vectorStore)
+                .searchRequest(SearchRequest.builder()
+                        .similarityThreshold(0.6)   // 低于该相似度的片段不注入，避免噪声
+                        .topK(4)                    // 每次最多取 4 个最相关片段
+                        .build())
+                .build();
+        return ChatClient.builder(chatModel)
+                .defaultSystem("你是一个基于知识库回答的 AI 助手。请仅依据提供的资料回答，"
+                        + "若资料中没有相关信息，请如实说明'资料中未提及'，不要编造。使用简体中文。")
+                .defaultAdvisors(qaAdvisor, MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
     }
 }
