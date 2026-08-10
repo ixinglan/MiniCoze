@@ -8,7 +8,7 @@
 - Spring Boot 3.5.x
 - Spring AI 1.1.2
 - Spring AI Alibaba 1.1.2.2（已支持 Agent Skills、Supervisor / Routing 多智能体）
-- 模型：DeepSeek V4（对话 + 视觉理解，OpenAI 兼容协议）+ Ollama 本地 bge-m3（embedding / RAG 向量化）
+- 模型：DeepSeek V4（仅对话，OpenAI 兼容协议，**公开 API 不支持图片输入**）+ 通义千问视觉 **qwen-vl-max**（图片理解，走 DashScope）+ 通义万相 **Wanx**（文生图，走 DashScope）+ Ollama 本地 bge-m3（embedding / RAG 向量化）
 - 向量库：默认内存 `SimpleVectorStore`（零依赖）；可切 **Milvus**（docker 起，生产级持久化，维度对齐 bge-m3 的 1024）
 - 文档解析：Apache Tika（`spring-ai-tika-document-reader`），一把覆盖 PDF / Word / Excel / PPT / TXT / MD
 
@@ -51,12 +51,21 @@
      - `POST /api/rag/files/{id}/index`（手动向量化，返回 `application/x-ndjson` **流式真进度**：解析 → 切片 → 逐片段 bge-m3 嵌入(percent 随真实嵌入递增) → 写入向量库 → done，status=indexed；失败推 error 事件）
      - `DELETE /api/rag/files/{id}/index`（移除索引：从向量库删该文件向量，保留文件与记录）
      - `DELETE /api/rag/files/{id}`（彻底删除：移除索引 + 删物理文件 + 删记录）
+   - **Agent 工具调用**（阶段 4，`agent.html`）：
+     - `POST /api/agent/chat`（JSON `{ "message": "...", "conversationId": "xxx" }`，返回 `{ answer, toolCalls, conversationId }`；model 自主调工具，前端可视化"调了哪些工具/传了啥"）
+     - `GET  /api/agent/tasks`（工单列表，来自 `task_ticket` 表）
+     - 会话复用聊天页基建：`GET /api/chat/conversations?type=agent`、`/api/chat/history?conversationId=xxx`、`DELETE /api/chat/conversation?conversationId=xxx`
+   - **多模态**（阶段 5，`multimodal.html`）：
+     - `POST /api/multimodal/describe`（multipart `image` + `question`，图片理解，走 qwen-vl-max，返回 `{ answer }`）
+     - `POST /api/multimodal/generate`（JSON `{ "prompt": "..." }`，文生图走通义万相 Wanx，返回 `{ image: "data:image/png;base64,...", url }`）
 
-## 双模型骨架说明
-- **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出、图片理解（V4 原生多模态输入）。
+## 多模型骨架说明
+- **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出（纯文本；其公开 API 不支持图片输入）。
+- **通义千问视觉 qwen-vl-max** 提供 `ChatModel`（DashScope 自动配置的 `dashScopeChatModel`）：负责图片理解，须开 `multi-model: true` 走多模态端点。
+- **通义万相 Wanx** 提供 `ImageModel`（DashScope 自动配置的 `dashScopeImageModel`）：负责文生图，异步生成、后端代理下载为 base64 返回。
 - **Ollama bge-m3** 提供 `EmbeddingModel`：负责文本向量化，供阶段 3 的 RAG 使用。
 - Ollama 的 `chat` 也已启用（注入 `ollamaChatModel`），专供**离线模式**切换为本地 LLM 生成；在线模式仍走 DeepSeek，二者通过 `@Qualifier` 区分，不冲突。
-- DeepSeek 不提供 embedding，也不支持"文生图"输出；文生图在阶段 5 再接（如通义万相 / 本地 SD）。
+- DeepSeek 不提供 embedding，也不支持图片输入 / 文生图；图片理解走 qwen-vl-max、文生图走 Wanx，二者均经 DashScope（`AI_DASHSCOPE_API_KEY`），与 DeepSeek 互不冲突。以上 4 类模型靠 `@Qualifier` 区分，各自职责清晰。
 
 ## 阶段 1 记忆持久化（MySQL）
 - 记忆从 JVM 内存（`InMemoryChatMemoryRepository`）迁移到 MySQL，库名 `mini_coze`，表：
@@ -90,6 +99,21 @@
 - 启动仍自动索引 `classpath:rag-docs/*`（开箱即有内容可问）；用户上传文件走手动向量化，两者共存于同一向量库。
   - **防重复（种子索引守卫）**：`memory` 模式每次启动本就空，照常索引；`milvus` 模式因数据持久化，若集合已非空则**跳过**种子索引（`RagConfig.loadRagDocuments` 用 `vectorStore.similaritySearch(topK=1)` 探空判断），避免每次启动都重复 insert 同一批文档导致越积越多。需强制重建时设 `rag.seed.force-reindex=true`。
 
+## 阶段 4 工具调用（@Tool + FunctionToolCallback）
+- 目标：让 LLM 从"能答"进化到"能动手"——把确定性能力（时间、计算、查资料、建工单）暴露成工具，模型自主决定何时调用、传什么参数，Spring AI 在内部执行并回灌结果，最终用自然语言作答（内置 tool-execution loop）。
+- 5 个工具（`tools/` 包，`@Tool` 标注）：`DateTimeTool`（当前时间）/ `CalculatorTool`（四则运算）/ `WeatherTool`（天气，模拟）/ `RagQueryTool`（知识库检索，复用阶段 3 向量库）/ `CreateTaskTool`（创建工单，复用阶段 2 的 TaskTicket）。
+- 工具可视化：`ToolCallRecorder`(ThreadLocal) 在每个 `@Tool` 执行时主动 `record(name, params)`，Controller 通过 `begin()/collect()/clear()` 100% 可靠捕获调用明细做前端可视化（避开 1.1.2 `ChatResponseMetadata` 无 `getToolCalls()` 的坑；`finally clear()` 防并发泄漏）。
+- 落库（计划外扩展）：`agentClient` 挂 `MessageChatMemoryAdvisor`（复用 JDBC 记忆）；`AgentController.chat` 复用 `ConversationService`(type=agent) + `ChatLogService`；新建 `task_ticket` 表（status/source/conversation_id/tags JSON），`CreateTaskTool` 建单即写库。
+- 端点 `POST /api/agent/chat` + `GET /api/agent/tasks` + 演示页 `agent.html`（左侧会话列表复用 /api/chat/conversations?type=agent）。
+
+## 阶段 5 多模态（图片理解 + 文生图）
+- 目标：让产品首次具备非文本模态能力——"看懂"图片（图片理解）+ "画出来"内容（文生图）。
+- 关键决策修正：**DeepSeek V4 公开 API（api.deepseek.com）仍为 text-only**，把图片当纯文本忽略（一度导致"看不到图"）。因此图片理解改走**通义千问视觉 qwen-vl-max**（DashScope），文生图走**通义万相 Wanx**（DashScope）；新增 `spring-ai-alibaba-starter-dashscope` 依赖，自动配置 `dashScopeChatModel`（视觉）+ `dashScopeImageModel`（文生图）两个 Bean。
+- 图片理解：上传图 → `Media`(mimeType + ByteArrayResource) → `user(u -> u.text(question).media(media))` → qwen-vl-max 作答。**`qwen-vl-max` 必须开 `multi-model: true`**（yml `spring.ai.dashscope.chat.options`），否则请求打到文本端点、图片被丢。
+- 文生图：`imageModel.call(new ImagePrompt(prompt))` → 拿到临时图片 URL → **后端代理下载成 base64 data URL** 返回（避免 DashScope 临时 URL 过期前端 403）；Wanx 异步生成，yml 放大 `retry.max-attempts=20` + 指数退避。
+- 端点 `POST /api/multimodal/describe` + `POST /api/multimodal/generate` + 演示页 `multimodal.html`（双模块：图片理解上传预览 + 文生图 prompt 生成）。
+- 详见 `docs/阶段5-知识点总结.md`。
+
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
@@ -103,13 +127,16 @@
 - [x] 阶段 3 增强：RAG 文件管理（`rag_file` 表 + 单/批量上传落盘 + Tika 多格式解析 + 手动向量化/移除/删除端点 + rag.html 文件面板）
 - [x] 阶段 3 增强：向量库可切换（Milvus 替换内存 SimpleVectorStore，维度 1024 对齐 bge-m3；docker/milvus-standalone.yml 一键起）
 - [x] 阶段 3 增强：离线模式（生成模型可切本地 Ollama，嵌入+向量库+生成全本地，RAG 问答可断网）
+- [x] 阶段 4：工具调用（`@Tool` + `FunctionToolCallback`，5 个工具：时间/计算器/天气/知识库检索/创建工单；`ToolCallRecorder`(ThreadLocal) 可视化工具调用；`agentClient` 注册工具）
+- [x] 阶段 4 扩展：agent 对话落库（复用 `ConversationService` type=agent + `ChatLogService` + 记忆 Advisor）+ 工单落库（新建 `task_ticket` 表，`CreateTaskTool` 建单即写库；来源无关为阶段 6/7 留缝）
+- [x] 阶段 5：多模态（`spring-ai-alibaba-starter-dashscope` 接入；qwen-vl-max 图片理解 + 通义万相 Wanx 文生图；`multimodal.html` 双模块演示页）
 
 ## 学习计划（每阶段 = 给产品加一块能力）
 - [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
 - [x] 阶段 2｜结构化输出与提示词：`PromptTemplate` + `BeanOutputConverter`
 - [x] 阶段 3｜RAG 检索增强：`document-reader-*` → `TokenTextSplitter` → Embedding → 向量库 → `QuestionAnswerAdvisor` / RagWay
-- [ ] 阶段 4｜工具调用：`@Tool` + `FunctionToolCallback`（让模型调你的 Spring Bean）
-- [ ] 阶段 5｜多模态：通义千问图片理解 + 通义万相文生图
+- [x] 阶段 4｜工具调用：`@Tool` + `FunctionToolCallback`（让模型调你的 Spring Bean）
+- [x] 阶段 5｜多模态：通义千问图片理解 + 通义万相文生图
 - [ ] 阶段 6｜Agent 编排：`spring-ai-alibaba-graph-core` → `ReactAgent` → 多智能体（Sequential / Routing / Supervisor）
 - [ ] 阶段 7｜MCP 集成：`nacos-mcp-client` / 标准 MCP，接入外部工具
 - [ ] 阶段 8｜工程化：可观测（ARMS / Langfuse）、Guardrails、Docker 部署
