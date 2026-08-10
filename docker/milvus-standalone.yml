@@ -72,6 +72,18 @@ services:
       timeout: 20s
       retries: 3
 
+  # Attu：Milvus 官方可视化客户端（Web GUI），用于浏览集合、向量、检索结果
+  # 浏览器打开 http://localhost:8000 即可连接上面的 milvus（默认端口 19530）
+  attu:
+    container_name: milvus-attu
+    image: zilliz/attu:v2.4.9
+    ports:
+      - "8000:3000"   # 容器内 3000，映射到宿主机 8000
+    environment:
+      MILVUS_URL: milvus:19530   # 指向同 compose 网络的 milvus 服务
+    depends_on:
+      - "milvus"
+
 networks:
   default:
     name: milvus
