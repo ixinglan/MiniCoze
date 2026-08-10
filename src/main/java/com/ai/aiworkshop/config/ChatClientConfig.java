@@ -15,6 +15,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.ai.aiworkshop.tools.CalculatorTool;
+import com.ai.aiworkshop.tools.CreateTaskTool;
+import com.ai.aiworkshop.tools.DateTimeTool;
+import com.ai.aiworkshop.tools.RagQueryTool;
+import com.ai.aiworkshop.tools.WeatherTool;
+
 @Configuration
 public class ChatClientConfig {
 
@@ -91,6 +97,38 @@ public class ChatClientConfig {
                 .defaultSystem("你是一个基于知识库回答的 AI 助手。请仅依据提供的资料回答，"
                         + "若资料中没有相关信息，请如实说明'资料中未提及'，不要编造。使用简体中文。")
                 .defaultAdvisors(qaAdvisor, MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .build();
+    }
+
+    /**
+     * 阶段 4 专用：工具调用（Tool Calling）客户端。
+     * 把 5 个 @Tool 工具 Bean 通过 defaultTools 注册进去 —— Spring AI 会扫描每个 Bean 里的
+     * @Tool 方法、自动生成 JSON Schema 交给模型。模型根据用户意图自主决定：调不调、调哪个、传什么参数，
+     * Spring AI 在内部执行工具方法并把结果回灌模型，最终模型生成自然语言回答（内置 tool-execution loop）。
+     *
+     * 工具集合（详见 tools/ 包）：
+     *  - DateTimeTool   获取当前时间
+     *  - CalculatorTool 四则运算
+     *  - WeatherTool    天气查询（模拟）
+     *  - RagQueryTool   知识库检索（复用阶段 3 的 VectorStore，把 RAG 变成“模型主动调”的工具）
+     *  - CreateTaskTool 创建工单（复用阶段 2 的 TaskTicket 结构化对象，体现“动手落地”）
+     */
+    @Bean
+    public ChatClient agentClient(@Qualifier("deepSeekChatModel") ChatModel deepSeek,
+                                  @Qualifier("ollamaChatModel") ChatModel ollama,
+                                  DateTimeTool dateTimeTool,
+                                  CalculatorTool calculatorTool,
+                                  WeatherTool weatherTool,
+                                  RagQueryTool ragQueryTool,
+                                  CreateTaskTool createTaskTool,
+                                  @Value("${rag.offline.enabled:false}") boolean offline) {
+        // 离线模式：生成改用本地 Ollama LLM（工具本身是本地确定性逻辑，不受影响）
+        ChatModel gen = offline ? ollama : deepSeek;
+        return ChatClient.builder(gen)
+                .defaultSystem("你是一个具备工具调用能力的 AI 助手。你拥有多个工具：获取当前时间、四则运算计算器、"
+                        + "查询天气(模拟)、检索本地知识库、创建工单。请根据用户的需求，自主判断是否需要调用工具、"
+                        + "调用哪一个、传什么参数，并基于工具的返回结果用简体中文回答。不要编造工具不存在的信息。")
+                .defaultTools(dateTimeTool, calculatorTool, weatherTool, ragQueryTool, createTaskTool)
                 .build();
     }
 }

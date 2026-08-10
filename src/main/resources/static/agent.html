@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 工作台 · 工具调用演示</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --line:#e3e8ef; --primary:#3b6cff; --tool:#7c4dff; --text:#1f2733; --muted:#8a94a6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+         background:var(--bg); color:var(--text); }
+  .app { max-width: 860px; margin: 0 auto; padding: 24px 16px 120px; }
+  header h1 { font-size: 20px; margin: 0 0 4px; }
+  header p { color: var(--muted); font-size: 13px; margin: 0 0 16px; line-height: 1.6; }
+  .log { display: flex; flex-direction: column; gap: 12px; }
+  .bubble { padding: 12px 14px; border-radius: 12px; line-height: 1.6; font-size: 14px;
+            border: 1px solid var(--line); background: var(--card); white-space: pre-wrap; word-break: break-word; }
+  .bubble.user { background: #eaf0ff; border-color: #cdddff; align-self: flex-end; max-width: 80%; }
+  .bubble.assistant { align-self: flex-start; max-width: 92%; }
+  .bubble.thinking { color: var(--muted); font-style: italic; }
+  .tools { margin: 8px 0 4px; display: flex; flex-direction: column; gap: 6px; }
+  .tool { border: 1px dashed var(--tool); background: #f3efff; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+  .tool .tname { color: var(--tool); font-weight: 600; }
+  .tool .tparams { color: var(--muted); margin-top: 2px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .input-bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px;
+               background: rgba(245,247,250,.92); backdrop-filter: blur(6px); border-top: 1px solid var(--line); }
+  .input-bar .inner { max-width: 860px; margin: 0 auto; display: flex; gap: 8px; }
+  #msg { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; outline: none; }
+  #msg:focus { border-color: var(--primary); }
+  #send { padding: 0 18px; border: none; border-radius: 10px; background: var(--primary); color: #fff;
+          font-size: 14px; cursor: pointer; }
+  #send:disabled { opacity: .5; cursor: default; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🛠️ Agent 工作台 · 工具调用演示</h1>
+    <p>模型不再只是“回答”，而是能“动手”：自主决定调用工具（获取时间 / 计算器 / 天气 / 知识库检索 / 创建工单），
+       基于工具返回结果作答。下方会实时展示<strong>模型这次调了哪些工具、传了什么参数</strong>。</p>
+  </header>
+  <div id="log" class="log"></div>
+</div>
+
+<div class="input-bar">
+  <div class="inner">
+    <input id="msg" placeholder="试试：现在几点了？帮我算 (123×456+789)；北京天气如何？知识库里怎么说的 XXX？帮我建个工单：上线前做安全扫描，优先级 P0" />
+    <button id="send">发送</button>
+  </div>
+  <div class="hint">提示：知识库检索需先上传并向量化文件（见 /rag.html）；创建工单后可访问 /api/agent/tasks 查看。</div>
+</div>
+
+<script>
+const logEl = document.getElementById('log');
+const input = document.getElementById('msg');
+const sendBtn = document.getElementById('send');
+
+function addBubble(role, text) {
+  const d = document.createElement('div');
+  d.className = 'bubble ' + role;
+  d.textContent = text;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+  return d;
+}
+
+function addToolCalls(calls) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tools';
+  for (const c of calls) {
+    const t = document.createElement('div');
+    t.className = 'tool';
+    const name = document.createElement('div');
+    name.className = 'tname';
+    name.textContent = '🔧 调用工具：' + c.name;
+    const params = document.createElement('div');
+    params.className = 'tparams';
+    params.textContent = '参数：' + JSON.stringify(c.params, null, 0);
+    t.appendChild(name);
+    t.appendChild(params);
+    wrap.appendChild(t);
+  }
+  logEl.appendChild(wrap);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function send() {
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  sendBtn.disabled = true;
+  addBubble('user', msg);
+  const thinking = addBubble('assistant thinking', '思考中…');
+  try {
+    const res = await fetch('/api/agent/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    const data = await res.json();
+    thinking.remove();
+    if (data.error) {
+      addBubble('assistant', '⚠️ ' + data.error);
+    } else {
+      if (Array.isArray(data.toolCalls) && data.toolCalls.length) {
+        addToolCalls(data.toolCalls);
+      }
+      addBubble('assistant', data.answer || '(无回复)');
+    }
+  } catch (e) {
+    thinking.remove();
+    addBubble('assistant', '⚠️ 请求失败：' + e.message);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+sendBtn.addEventListener('click', send);
+input.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+</script>
+</body>
+</html>
