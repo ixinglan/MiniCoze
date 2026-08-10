@@ -11,7 +11,9 @@ import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.milvus.MilvusVectorStore;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -54,7 +56,7 @@ public class RagConfig {
      */
     @Bean
     @Primary
-    public VectorStore vectorStore(EmbeddingModel embeddingModel,
+    public VectorStore vectorStore(@Qualifier("ollamaEmbeddingModel") EmbeddingModel embeddingModel,
                                    @Value("${rag.vectorstore.type:memory}") String type,
                                    @Value("${rag.vectorstore.milvus.host:localhost}") String host,
                                    @Value("${rag.vectorstore.milvus.port:19530}") int port,
@@ -84,7 +86,7 @@ public class RagConfig {
      * 防重复：milvus 模式若集合已非空则跳过（force-reindex=true 时强制重建）。
      */
     @Bean
-    public org.springframework.boot.CommandLineRunner loadRagDocuments(VectorStore vectorStore,
+    public CommandLineRunner loadRagDocuments(VectorStore vectorStore,
             @Value("${rag.vectorstore.type:memory}") String type,
             @Value("${rag.seed.force-reindex:false}") boolean forceReindex) {
         return args -> {

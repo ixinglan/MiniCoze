@@ -20,14 +20,16 @@ spring:
     configuration:
       map-underscore-to-camel-case: true
   ai:
-    # ===== 模型 1：DeepSeek V4（对话 + 视觉理解）=====
+    # ===== 模型 1：DeepSeek V4（对话）=====
+    # 注意：DeepSeek V4 公开 API（api.deepseek.com）至今为 text-only，不支持图片输入。
+    # 图片理解（阶段 5 看图说话）改用通义千问视觉模型 qwen-vl-max（见下方 dashscope.chat）。
     deepseek:
       # 推荐用环境变量注入，避免把密钥写进代码/仓库
       api-key: ${AI_DEEPSEEK_API_KEY:}
       base-url: https://api.deepseek.com
       chat:
         options:
-          model: deepseek-v4-flash   # 或 deepseek-v4-pro（更强/更贵）；V4 原生支持图片输入
+          model: deepseek-v4-flash   # 或 deepseek-v4-pro（更强/更贵）
 
     # ===== 模型 2：Ollama 本地（阶段 3 RAG 向量化 + 离线模式生成）=====
     # embedding 始终启用（bge-m3 负责向量化）；chat 保持启用以便离线模式切换为本地 LLM
@@ -41,6 +43,29 @@ spring:
         enabled: true
         options:
           model: bge-m3   # 中文 RAG 推荐；也可换 nomic-embed-text（768 维，更轻量）
+
+    # ===== 模型 3：阿里云 DashScope（阶段 5：图片理解 qwen-vl-max + 文生图通义万相 Wanx）=====
+    # DashScope starter 自动配置两个 Bean：dashScopeChatModel（ChatModel，用于视觉理解）
+    # 与 dashScopeImageModel（ImageModel，用于文生图）。两者互不冲突。
+    dashscope:
+      # 推荐用环境变量注入，避免把密钥写进代码/仓库
+      api-key: ${AI_DASHSCOPE_API_KEY:}
+      # 文生图是异步任务（先提交任务，再后台轮询状态），生成慢时默认 10 次重试不够，放大避免 "still pending" 误判失败
+      retry:
+        max-attempts: 20
+        backoff:
+          initial-interval: 3s
+          multiplier: 2
+          max-interval: 15s
+      # 图片理解（看图说话）：必须指定视觉模型 + 开启 multi-model，否则请求打到文本端点、图片被丢弃
+      chat:
+        options:
+          model: qwen-vl-max          # 通义千问视觉模型，支持图片输入
+          multi-model: true           # 关键开关：走多模态端点；缺省会当成纯文本请求导致"看不到图"
+      image:
+        options:
+          model: wanx2.0-t2i-turbo        # 通义万相；可选 wanx2.0-t2i-turbo（更快/更便宜）
+          size: 1024*1024       # 输出分辨率
 
 server:
   port: 9999

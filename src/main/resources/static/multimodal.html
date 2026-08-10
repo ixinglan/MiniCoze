@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多模态 · 图片理解 + 文生图</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --line:#e3e8ef; --primary:#3b6cff; --tool:#7c4dff; --text:#1f2733; --muted:#8a94a6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+         background:var(--bg); color:var(--text); }
+  nav { display: flex; gap: 6px; align-items: center; padding: 12px 20px; background: var(--card);
+        border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  nav a { text-decoration: none; color: var(--muted); font-size: 13px; padding: 6px 12px; border-radius: 8px; }
+  nav a:hover { background: var(--bg); color: var(--text); }
+  nav a.active { background: #eaf0ff; color: var(--primary); font-weight: 600; }
+  nav .brand { font-weight: 700; color: var(--text); margin-right: 8px; font-size: 15px; }
+  .app { max-width: 960px; margin: 0 auto; padding: 24px 16px 60px; }
+  header h1 { font-size: 20px; margin: 0 0 4px; }
+  header p { color: var(--muted); font-size: 13px; margin: 0 0 20px; line-height: 1.6; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+  .card .sub { color: var(--muted); font-size: 12px; margin: 0 0 14px; line-height: 1.5; }
+  label { font-size: 12px; color: var(--muted); display: block; margin: 10px 0 4px; }
+  input[type=text], textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+        font-size: 14px; outline: none; font-family: inherit; resize: vertical; }
+  input[type=text]:focus, textarea:focus { border-color: var(--primary); }
+  .row { display: flex; gap: 8px; margin-top: 12px; }
+  button.go { padding: 10px 18px; border: none; border-radius: 10px; background: var(--primary); color: #fff;
+        font-size: 14px; cursor: pointer; }
+  button.go:hover { filter: brightness(1.05); }
+  button.go:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+  #preview, #genImg { max-width: 100%; border-radius: 10px; border: 1px solid var(--line); margin-top: 10px; display: none; }
+  .result { margin-top: 12px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+        border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fafbfc; min-height: 20px; }
+  .result:empty::before { content: "结果将显示在这里…"; color: var(--muted); }
+  .err { color: #e5484d; }
+  .filepick { display: inline-block; padding: 8px 14px; border: 1px dashed var(--line); border-radius: 10px;
+        cursor: pointer; font-size: 13px; color: var(--muted); }
+  .filepick:hover { border-color: var(--primary); color: var(--primary); }
+  input[type=file] { display: none; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">🤖 AI Workshop</span>
+  <a href="/index.html">聊天</a>
+  <a href="/rag.html">知识库</a>
+  <a href="/agent.html">Agent</a>
+  <a href="/multimodal.html" class="active">多模态</a>
+</nav>
+
+<div class="app">
+  <header>
+    <h1>🎨 多模态 · 图片理解 + 文生图</h1>
+    <p>阶段 5：让模型拥有“看”和“画”的能力。<strong>图片理解</strong>复用 DeepSeek V4（原生支持图片输入），
+       把图片随问题一起发给模型；<strong>文生图</strong>调用阿里云通义万相（Wanx），由后端代理下载为可直接显示的图片。</p>
+  </header>
+
+  <div class="grid">
+    <!-- 模块 1：图片理解 -->
+    <section class="card">
+      <h2>👁️ 图片理解</h2>
+      <p class="sub">上传一张图片，问它任何关于图的问题。模型会“看到”图片后作答。</p>
+
+      <label>选择图片</label>
+      <label class="filepick" for="imgInput">📁 选择图片…</label>
+      <input type="file" id="imgInput" accept="image/*">
+      <img id="preview" alt="预览">
+
+      <label>你的问题</label>
+      <input type="text" id="question" value="请描述这张图片的内容">
+
+      <div class="row">
+        <button class="go" id="describeBtn">发送理解</button>
+        <button class="go ghost" id="clearImg" type="button">清空</button>
+      </div>
+      <div class="hint" id="imgHint">支持 jpg / png / webp 等常见格式。</div>
+
+      <label>模型回答</label>
+      <div class="result" id="imgResult"></div>
+    </section>
+
+    <!-- 模块 2：文生图 -->
+    <section class="card">
+      <h2>🖌️ 文生图（通义万相）</h2>
+      <p class="sub">用一句中文描述你想要的图像，模型生成一张图。生成是异步的，请稍候。</p>
+
+      <label>画面描述（prompt）</label>
+      <textarea id="prompt" rows="4" placeholder="例如：一只戴墨镜的橘猫，坐在霓虹灯下的赛博朋克街道，电影感，高细节"></textarea>
+
+      <div class="row">
+        <button class="go" id="genBtn">生成图片</button>
+      </div>
+      <div class="hint" id="genHint">提示：描述越具体、含风格/光线/构图，出图质量越高。</div>
+
+      <label>生成结果</label>
+      <img id="genImg" alt="生成结果">
+      <div class="result" id="genResult"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+/* ---------- 图片理解 ---------- */
+const imgInput = document.getElementById('imgInput');
+const preview = document.getElementById('preview');
+const question = document.getElementById('question');
+const describeBtn = document.getElementById('describeBtn');
+const imgResult = document.getElementById('imgResult');
+const imgHint = document.getElementById('imgHint');
+const clearImg = document.getElementById('clearImg');
+
+imgInput.addEventListener('change', () => {
+  const f = imgInput.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = e => { preview.src = e.target.result; preview.style.display = 'block'; };
+  reader.readAsDataURL(f);
+});
+
+clearImg.addEventListener('click', () => {
+  imgInput.value = ''; preview.src = ''; preview.style.display = 'none';
+  imgResult.textContent = ''; imgResult.classList.remove('err');
+});
+
+describeBtn.addEventListener('click', async () => {
+  const f = imgInput.files[0];
+  if (!f) { imgHint.textContent = '⚠️ 请先选择一张图片'; return; }
+  describeBtn.disabled = true; describeBtn.textContent = '理解中…';
+  imgResult.classList.remove('err'); imgResult.textContent = '正在分析图片…';
+  try {
+    const fd = new FormData();
+    fd.append('image', f);
+    fd.append('question', question.value || '请描述这张图片的内容');
+    const resp = await fetch('/api/multimodal/describe', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (data.error) { imgResult.classList.add('err'); imgResult.textContent = data.error; }
+    else imgResult.textContent = data.answer;
+  } catch (e) {
+    imgResult.classList.add('err'); imgResult.textContent = '请求失败：' + e.message;
+  } finally {
+    describeBtn.disabled = false; describeBtn.textContent = '发送理解';
+  }
+});
+
+/* ---------- 文生图 ---------- */
+const prompt = document.getElementById('prompt');
+const genBtn = document.getElementById('genBtn');
+const genImg = document.getElementById('genImg');
+const genResult = document.getElementById('genResult');
+const genHint = document.getElementById('genHint');
+
+genBtn.addEventListener('click', async () => {
+  const p = prompt.value.trim();
+  if (!p) { genHint.textContent = '⚠️ 请先填写画面描述'; return; }
+  genBtn.disabled = true; genBtn.textContent = '生成中…（异步，请稍候）';
+  genImg.style.display = 'none'; genResult.classList.remove('err'); genResult.textContent = '正在生成图片，通义万相正在作画…';
+  try {
+    const resp = await fetch('/api/multimodal/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: p })
+    });
+    const data = await resp.json();
+    if (data.error) { genResult.classList.add('err'); genResult.textContent = data.error; }
+    else { genImg.src = data.image; genImg.style.display = 'block'; genResult.textContent = '✅ 生成完成'; }
+  } catch (e) {
+    genResult.classList.add('err'); genResult.textContent = '请求失败：' + e.message;
+  } finally {
+    genBtn.disabled = false; genBtn.textContent = '生成图片';
+  }
+});
+</script>
+</body>
+</html>

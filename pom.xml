@@ -125,9 +125,13 @@
             <artifactId>spring-ai-milvus-store</artifactId>
         </dependency>
 
-        <!-- 备注：阶段 3(RAG 向量化) 和 阶段 5(多模态) DeepSeek 不提供 embedding / 图片能力，
-             到时再按需加回 com.alibaba.cloud.ai:spring-ai-alibaba-starter-dashscope 做 embedding / 视觉，
-             并配置多模型 Bean（按 @Qualifier 区分）。本阶段先单模型跑通。 -->
+        <!-- 阶段 5 多模态：文生图（通义万相 Wanx）。DashScope 自动配置会注入
+             DashScopeImageModel（实现 Spring AI 的 ImageModel 接口），与现有 DeepSeek/Ollama 的
+             ChatModel Bean 互不冲突。图片理解仍走 DeepSeek V4 flash（传 Media），无需本 starter。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+        </dependency>
 
         <!-- 后续阶段按需开启（已加入 BOM，无需写 version）：
         <dependency>

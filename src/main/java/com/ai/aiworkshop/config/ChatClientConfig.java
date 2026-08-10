@@ -135,4 +135,21 @@ public class ChatClientConfig {
                 .defaultTools(dateTimeTool, calculatorTool, weatherTool, ragQueryTool, createTaskTool)
                 .build();
     }
+
+    /**
+     * 阶段 5 专用：多模态图片理解客户端。
+     * 重要：DeepSeek V4 公开 API（api.deepseek.com）依然是 text-only，把图片当纯文本忽略，
+     * 所以图片理解改用通义千问视觉模型 qwen-vl-max（由 dashscope starter 自动配置的 {@code dashScopeChatModel} 提供）。
+     * 关键前提：DashScope 视觉模型必须开启 multi-model（已在 application.yml 的
+     * spring.ai.dashscope.chat.options.multi-model=true 配置），否则请求打到文本端点、图片被丢弃，
+     * 模型就会回复"看不到图片"。
+     * 不挂 MessageChatMemoryAdvisor —— 图片理解是一次性视觉问答，不该写进多轮对话记忆（与 parsingClient 同理）。
+     */
+    @Bean
+    public ChatClient multimodalClient(@Qualifier("dashScopeChatModel") ChatModel qwenVl) {
+        return ChatClient.builder(qwenVl)
+                .defaultSystem("你是一个看图说话的 AI 助手。请仔细观察图片，用简体中文描述其内容，"
+                        + "或根据图片回答用户的问题。若图片信息不足以回答，请如实说明。")
+                .build();
+    }
 }

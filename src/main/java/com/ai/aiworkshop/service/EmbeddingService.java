@@ -1,6 +1,7 @@
 package com.ai.aiworkshop.service;
 
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -18,7 +19,7 @@ public class EmbeddingService {
 
     private final EmbeddingModel embeddingModel;
 
-    public EmbeddingService(EmbeddingModel embeddingModel) {
+    public EmbeddingService(@Qualifier("ollamaEmbeddingModel") EmbeddingModel embeddingModel) {
         this.embeddingModel = embeddingModel;
     }
 
