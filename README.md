@@ -45,6 +45,8 @@
    - **RAG 文件管理**（`rag.html` **右侧**「📁 文件管理」独立栏，避免挤占左侧会话/中间对话空间；支持选前预览、上传真实百分比进度、向量化**流式真进度**，手动控制是否进知识库）：
      - `POST /api/rag/files`（单文件上传，field `file`；落盘 + 写 `rag_file` 记录，status=uploaded）
      - `POST /api/rag/files/batch`（批量上传，field `files`）
+     - `POST /api/rag/files/check`（上传前去重预检：传内容哈希列表，返回已存在的 hash → {filename,status,id}）
+     - **上传去重**：按文件内容 SHA-256 判断，内容相同即视为重复（无论改名与否），已存在则提示并跳过、不重复落盘；前端上传前先算哈希调 `/check` 预检，已上传过的直接拦截提示。
      - `GET  /api/rag/files`（文件列表，含索引状态）
      - `POST /api/rag/files/{id}/index`（手动向量化，返回 `application/x-ndjson` **流式真进度**：解析 → 切片 → 逐片段 bge-m3 嵌入(percent 随真实嵌入递增) → 写入向量库 → done，status=indexed；失败推 error 事件）
      - `DELETE /api/rag/files/{id}/index`（移除索引：从向量库删该文件向量，保留文件与记录）
@@ -80,7 +82,7 @@
 - **聊天 / RAG 会话隔离（type 字段）**：`conversation` 表新增 `type` 列（`chat` / `rag`，默认 `chat`），列表按 `type` 过滤，聊天页与 RAG 页互不串门。后端 `ConversationService.createConversation(type)` / `listConversations(type)` 透传；`ChatController` 的 `conversations` / `newConversation` 接收 `@RequestParam type`；`rag.html` 固定传 `?type=rag`。为兼容已存在的库，新增 `SchemaMigration`（CommandLineRunner）在启动时幂等 `ALTER TABLE` 补列并回填历史会话为 `chat`。
 
 ## 阶段 3 增强：RAG 文件管理 + 向量数据库 + 离线模式
-- **文件管理（手动控制检索增强开关）**：新增 `rag_file` 表（id / filename / content_type / size / storage_path / status / doc_ids / 时间戳）。文件本体落盘到 `data/rag-files/`，元数据存库。上传只落盘（status=uploaded），**点「向量化」才切片 + bge-m3 向量化 + 写入向量库**（status=indexed），「移除索引」可回退，「删除」连文件带向量一起清。支持单文件 / 批量上传，多格式由 Tika 统一解析。
+- **文件管理（手动控制检索增强开关）**：新增 `rag_file` 表（id / filename / content_type / size / storage_path / content_hash / status / doc_ids / 时间戳）。文件本体落盘到 `data/rag-files/`，元数据存库。上传只落盘（status=uploaded），**点「向量化」才切片 + bge-m3 向量化 + 写入向量库**（status=indexed），「移除索引」可回退，「删除」连文件带向量一起清。支持单文件 / 批量上传，多格式由 Tika 统一解析。**上传带内容哈希去重（SHA-256）**：同一份文件（即使改名）再次上传会被拦截提示，不重复落盘。
 - **多格式解析**：`TikaDocumentReader` 一把覆盖 PDF / Word / Excel / PPT / TXT / MD（按文件扩展名自动选解析器），无需为每种格式写专门代码。
 - **向量库可切换（内存 ↔ Milvus）**：`RagConfig` 的 `VectorStore` Bean 由 `rag.vectorstore.type` 控制——`memory`（默认，零依赖）或 `milvus`。业务侧（`QuestionAnswerAdvisor` / `RagService`）只依赖 `VectorStore` 抽象，切换实现零改动。Milvus 维度固定 1024 对齐 bge-m3；`docker/milvus-standalone.yml` 提供 etcd + minio + milvus 单机版一键启动。
   - **坑**：Spring AI 1.1.2 的 `MilvusVectorStore` 把 `doc_id` 字段**硬编码为 `VarChar(36)` 且不可配置**。上传文件的文档 ID 必须用 ≤36 字符的有效字符串，否则 insert 报 `io.milvus.exception.ParamException: Type mismatch for field 'doc_id'`。本项目的 `RagFileService` 已用「去横杠 UUID（32 字符）」作为 doc id，`fileId` 仍留在 metadata 中用于按文件移除索引。

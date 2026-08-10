@@ -36,6 +36,10 @@ public class RagFileDO {
     @TableField("storage_path")
     private String storagePath;
 
+    /** 文件内容 SHA-256（上传去重指纹：内容相同即视为重复） */
+    @TableField("content_hash")
+    private String contentHash;
+
     /** 索引状态：uploaded（仅上传，未向量化）/ indexed（已向量化可检索） */
     @TableField("status")
     private String status;

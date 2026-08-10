@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS rag_file (
     content_type VARCHAR(128) DEFAULT NULL,                -- MIME 类型
     size         BIGINT       DEFAULT 0,                   -- 文件大小（字节）
     storage_path VARCHAR(512) NOT NULL,                    -- 落盘物理路径（含 UUID 前缀）
+    content_hash CHAR(64)     DEFAULT NULL,                -- 文件内容 SHA-256（上传去重指纹）
     status       VARCHAR(16)  NOT NULL DEFAULT 'uploaded', -- uploaded / indexed
     doc_ids      TEXT,                                     -- 该文件切片在向量库的文档 ID（逗号分隔），用于按文件移除索引
     created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,

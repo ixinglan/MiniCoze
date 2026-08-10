@@ -306,17 +306,59 @@
       });
     }
 
-    // 上传：用 XHR 显示真实百分比进度
-    function uploadFiles() {
+    // 计算文件内容 SHA-256（浏览器端，用于上传前重复预检；环境不支持时返回 null，由后端兜底去重）
+    async function sha256Hex(file) {
+      if (!(window.crypto && window.crypto.subtle)) return null;
+      try {
+        const buf = await file.arrayBuffer();
+        const digest = await window.crypto.subtle.digest('SHA-256', buf);
+        return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) { return null; }
+    }
+
+    // 上传：先按内容哈希预检重复（已上传过的直接跳过并提示），再 XHR 上传新文件并显示真实百分比
+    async function uploadFiles() {
       if (pendingFiles.length === 0) { alert('请先选择文件'); return; }
+      const btn = document.getElementById('uploadBtn');
+
+      // 1) 计算哈希 + 服务端预检
+      const items = [];
+      for (const f of pendingFiles) items.push({ file: f, hash: await sha256Hex(f) });
+      const hashable = items.filter(i => i.hash);
+      let dups = {};
+      if (hashable.length) {
+        try {
+          const resp = await fetch('/api/rag/files/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hashes: hashable.map(i => i.hash) })
+          });
+          if (resp.ok) dups = (await resp.json()).duplicates || {};
+        } catch (e) { dups = {}; }
+      }
+      const dupItems = items.filter(i => i.hash && dups[i.hash]);
+      const newItems = items.filter(i => !(i.hash && dups[i.hash]));
+
+      if (dupItems.length) {
+        const lines = dupItems.map(i => '• ' + i.file.name
+          + '（' + (dups[i.hash].status === 'indexed' ? '已索引' : '已上传') + '）');
+        alert('以下文件已上传过，已跳过上传：\n' + lines.join('\n'));
+      }
+      if (newItems.length === 0) {
+        // 全部重复：不上传，清空选择
+        pendingFiles = [];
+        renderPicks();
+        return;
+      }
+
+      // 2) 只上传新文件
       const fd = new FormData();
-      for (const f of pendingFiles) fd.append('files', f);
+      for (const it of newItems) fd.append('files', it.file);
 
       const prog = document.getElementById('upProgress');
       const bar = document.getElementById('upBar');
       const barI = bar.querySelector('i');
       const text = document.getElementById('upText');
-      const btn = document.getElementById('uploadBtn');
       prog.classList.add('show');
       bar.classList.remove('indeterminate');
       barI.style.width = '0%';
@@ -334,7 +376,16 @@
       };
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          text.textContent = '上传完成 ✓（' + pendingFiles.length + ' 个文件）';
+          // 后端可能对并发重复再判一次，收集返回的重复提示
+          let serverDups = [];
+          try {
+            const arr = JSON.parse(xhr.responseText);
+            if (Array.isArray(arr)) serverDups = arr.filter(r => r.duplicate).map(r => r.filename);
+          } catch (e) { }
+          if (serverDups.length) {
+            alert('另外以下文件服务端判定为重复，已跳过：\n• ' + serverDups.join('\n• '));
+          }
+          text.textContent = '上传完成 ✓（' + newItems.length + ' 个新文件）';
           pendingFiles = [];
           renderPicks();
           setTimeout(() => { prog.classList.remove('show'); }, 1200);

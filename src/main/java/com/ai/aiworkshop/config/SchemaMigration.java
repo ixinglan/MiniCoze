@@ -71,6 +71,20 @@ public class SchemaMigration implements CommandLineRunner {
                             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
                 }
             }
+
+            // 幂等补列：content_hash（老库没有该列时 ALTER 加上，用于上传去重）
+            boolean hasContentHash;
+            try (Statement check3 = conn.createStatement();
+                 ResultSet rs3 = check3.executeQuery(
+                         "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                         + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'rag_file' AND COLUMN_NAME = 'content_hash'")) {
+                hasContentHash = rs3.next() && rs3.getInt(1) > 0;
+            }
+            if (!hasContentHash) {
+                try (Statement alter = conn.createStatement()) {
+                    alter.execute("ALTER TABLE rag_file ADD COLUMN content_hash CHAR(64) DEFAULT NULL");
+                }
+            }
         }
     }
 }

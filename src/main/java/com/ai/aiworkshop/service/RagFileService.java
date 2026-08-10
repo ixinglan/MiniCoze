@@ -15,11 +15,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -70,18 +71,29 @@ public class RagFileService {
         return base.isEmpty() ? "file" : base;
     }
 
-    /** 单文件上传：落盘 + 写元数据（status=uploaded） */
+    /**
+     * 单文件上传：内容哈希去重 → 落盘 + 写元数据（status=uploaded）。
+     * 同一份文件（SHA-256 相同）已存在则抛 DuplicateFileException，前端据此提示并跳过，不重复落盘。
+     */
     public RagFileDO upload(MultipartFile file) throws IOException {
+        // 读字节：既用于内容哈希（去重依据），也直接落盘，避免对大文件二次读取
+        byte[] bytes = file.getBytes();
+        String hash = sha256(bytes);
+
+        // 重复校验：内容哈希已存在即视为重复（无论 uploaded 还是 indexed 状态）
+        RagFileDO dup = findByHash(hash);
+        if (dup != null) {
+            throw new DuplicateFileException(dup.getFilename(), dup.getStatus(), dup.getId());
+        }
+
         String id = UUID.randomUUID().toString();
         String original = file.getOriginalFilename();
         String storedName = id + "_" + sanitize(original);
         Path dir = Paths.get(storageDir);
         Files.createDirectories(dir);
         Path target = dir.resolve(storedName);
-        // 用流拷贝而非 transferTo：避免 Tomcat 把相对路径解析到容器临时目录导致 FileNotFound
-        try (InputStream in = file.getInputStream()) {
-            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        // 用已读字节落盘（绝对路径，避免相对路径被容器解析到临时目录导致 FileNotFound）
+        Files.write(target, bytes);
 
         RagFileDO d = new RagFileDO();
         d.setId(id);
@@ -89,10 +101,47 @@ public class RagFileService {
         d.setContentType(file.getContentType());
         d.setSize(file.getSize());
         d.setStoragePath(target.toString());
+        d.setContentHash(hash);
         d.setStatus("uploaded");
         d.setCreatedAt(LocalDateTime.now());
         ragFileMapper.insert(d);
         return d;
+    }
+
+    /** 计算字节数组的 SHA-256 十六进制串（上传去重的内容指纹） */
+    private static String sha256(byte[] data) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] h = md.digest(data);
+            StringBuilder sb = new StringBuilder(h.length * 2);
+            for (byte b : h) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 算法不可用", e);
+        }
+    }
+
+    /** 按内容哈希查已存在的记录（去重用），命中返回该记录 */
+    public RagFileDO findByHash(String hash) {
+        if (hash == null || hash.isEmpty()) return null;
+        return ragFileMapper.selectOne(
+                Wrappers.<RagFileDO>query().eq("content_hash", hash).last("LIMIT 1"));
+    }
+
+    /** 批量去重预检：返回已存在的 hash -> {filename, status, id}，供前端上传前提示 */
+    public Map<String, Map<String, Object>> checkDuplicates(List<String> hashes) {
+        Map<String, Map<String, Object>> result = new LinkedHashMap<>();
+        if (hashes == null || hashes.isEmpty()) return result;
+        List<RagFileDO> existing = ragFileMapper.selectList(
+                Wrappers.<RagFileDO>query().in("content_hash", hashes));
+        for (RagFileDO d : existing) {
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("filename", d.getFilename());
+            info.put("status", d.getStatus());
+            info.put("id", d.getId());
+            result.put(d.getContentHash(), info);
+        }
+        return result;
     }
 
     /** 文件列表（含索引状态），按上传时间倒序 */
