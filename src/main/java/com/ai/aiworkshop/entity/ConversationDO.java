@@ -22,6 +22,10 @@ public class ConversationDO {
     @TableField("title")
     private String title;
 
+    /** 会话类型：chat（常规聊天）/ rag（知识库问答），用于列表隔离 */
+    @TableField("type")
+    private String type;
+
     @TableField("created_at")
     private LocalDateTime createdAt;
 

@@ -79,16 +79,16 @@ public class ChatController {
         return Map.of("reply", reply);
     }
 
-    /** 会话列表（左侧栏） */
+    /** 会话列表（左侧栏），按 type 过滤：聊天页默认 chat，RAG 页传 rag */
     @GetMapping("/conversations")
-    public List<Map<String, Object>> conversations() {
-        return conversationService.listConversations();
+    public List<Map<String, Object>> conversations(@RequestParam(required = false, defaultValue = "chat") String type) {
+        return conversationService.listConversations(type);
     }
 
-    /** 新建会话，返回新会话 ID（前端“新对话”按钮调用） */
+    /** 新建会话，返回新会话 ID（前端“新对话”按钮调用）。type 区分来源：chat / rag */
     @PostMapping("/conversations")
-    public Map<String, String> newConversation() {
-        return Map.of("id", conversationService.createConversation());
+    public Map<String, String> newConversation(@RequestParam(required = false, defaultValue = "chat") String type) {
+        return Map.of("id", conversationService.createConversation(type));
     }
 
     /** 某个会话的历史消息（前端点开会话时拉取） */

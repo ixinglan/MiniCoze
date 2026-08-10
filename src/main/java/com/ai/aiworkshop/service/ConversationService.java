@@ -32,24 +32,26 @@ public class ConversationService {
         this.chatLogService = chatLogService;
     }
 
-    /** 新建一个会话，返回会话 ID（供前端“新对话”按钮使用） */
-    public String createConversation() {
+    /** 新建一个会话，返回会话 ID（供前端“新对话”按钮使用）。type 区分来源：chat / rag */
+    public String createConversation(String type) {
         String id = UUID.randomUUID().toString();
         ConversationDO d = new ConversationDO();
         d.setId(id);
         d.setTitle("新对话");
+        d.setType(type);
         conversationMapper.insert(d);   // created_at / updated_at 由 DB 默认值 CURRENT_TIMESTAMP 填充
         return id;
     }
 
-    /** 会话列表（左侧栏），按最近更新倒序 */
-    public List<Map<String, Object>> listConversations() {
+    /** 会话列表（左侧栏），按最近更新倒序；按 type 过滤，使聊天页与 RAG 页互不串门 */
+    public List<Map<String, Object>> listConversations(String type) {
         List<ConversationDO> list = conversationMapper.selectList(
-                Wrappers.<ConversationDO>query().orderByDesc("updated_at"));
+                Wrappers.<ConversationDO>query().eq("type", type).orderByDesc("updated_at"));
         return list.stream().map(d -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", d.getId());
             m.put("title", d.getTitle());
+            m.put("type", d.getType());
             m.put("updated_at", d.getUpdatedAt());
             return m;
         }).collect(Collectors.toList());

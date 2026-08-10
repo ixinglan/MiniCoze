@@ -14,12 +14,15 @@ CREATE TABLE IF NOT EXISTS chat_memory (
     INDEX idx_cm_conv (conversation_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 会话元数据表：给前端左侧会话列表用（标题、时间排序）
+-- 会话元数据表：给前端左侧会话列表用（标题、时间排序、类型）
+-- type 字段用于区分会话来源：chat（常规聊天）/ rag（知识库问答），列表按 type 过滤隔离
 CREATE TABLE IF NOT EXISTS conversation (
     id         VARCHAR(64)  PRIMARY KEY,
     title      VARCHAR(255) DEFAULT '新对话',
+    type       VARCHAR(16)  NOT NULL DEFAULT 'chat',
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_conv_type (type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 完整对话日志表：append-only，永不随窗口裁剪删除（给人回看完整历史用）
