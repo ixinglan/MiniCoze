@@ -28,24 +28,27 @@
    mvn spring-boot:run
    ```
 5. 打开浏览器：http://localhost:9999/ 即可对话。
-   接口：
-   - `GET  /api/chat/stream?message=你好&conversationId=xxx`（SSE 流式，多轮记忆靠 conversationId 隔离）
-   - `POST /api/chat`（JSON `{ "message": "...", "conversationId": "xxx" }`）
-- `GET  /api/chat/conversations?type=chat`（会话列表，按 type 过滤；聊天页用 `chat`，RAG 页用 `rag`）
-- `POST /api/chat/conversations?type=chat`（新建会话，返回 `{ "id": "..." }`；`type` 区分来源 `chat` / `rag`）
-   - `GET  /api/chat/history?conversationId=xxx`（拉取某会话历史）
-   - `DELETE /api/chat/conversation?conversationId=xxx`（彻底删除会话：消息 + 元数据）
-   - `GET  /api/chat/embed?text=你好世界`（验证 Ollama embedding 是否就绪）
-- `POST /api/parse/ticket`（JSON `{ "text": "..." }`，返回结构化工单 TaskTicket JSON；演示页 http://localhost:9999/ticket.html）
-- `GET  /api/rag/stream?message=...&conversationId=xxx`（RAG 流式问答，基于知识库检索回答；每轮双写 chat_log，复用 /api/chat/conversations?type=rag、/api/chat/history 做会话列表与历史回看，与聊天页互不串门）
-- `POST /api/rag`（JSON `{ "message": "...", "conversationId": "xxx" }`，非流式 RAG 问答；演示页 http://localhost:9999/rag.html）
-- **RAG 文件管理**（`rag.html` **右侧**「📁 文件管理」独立栏，避免挤占左侧会话/中间对话空间；支持选前预览、上传真实百分比进度、向量化进度条，手动控制是否进知识库）：
-  - `POST /api/rag/files`（单文件上传，field `file`；落盘 + 写 `rag_file` 记录，status=uploaded）
-  - `POST /api/rag/files/batch`（批量上传，field `files`）
-  - `GET  /api/rag/files`（文件列表，含索引状态）
-  - `POST /api/rag/files/{id}/index`（手动向量化：解析 → 切片 → bge-m3 向量化 → 写入向量库，status=indexed）
-  - `DELETE /api/rag/files/{id}/index`（移除索引：从向量库删该文件向量，保留文件与记录）
-  - `DELETE /api/rag/files/{id}`（彻底删除：移除索引 + 删物理文件 + 删记录）
+   - 接口：
+     - `GET  /api/chat/stream?message=你好&conversationId=xxx`（SSE 流式，多轮记忆靠 conversationId 隔离）
+     - `POST /api/chat`（JSON `{ "message": "...", "conversationId": "xxx" }`）
+   - 会话管理接口：
+     - `GET  /api/chat/conversations?type=chat`（会话列表，按 type 过滤；聊天页用 `chat`，RAG 页用 `rag`）
+     - `POST /api/chat/conversations?type=chat`（新建会话，返回 `{ "id": "..." }`；`type` 区分来源 `chat` / `rag`）
+     - `GET  /api/chat/history?conversationId=xxx`（拉取某会话历史）
+     - `DELETE /api/chat/conversation?conversationId=xxx`（彻底删除会话：消息 + 元数据）
+     - `GET  /api/chat/embed?text=你好世界`（验证 Ollama embedding 是否就绪）
+   - 结构化接口：
+     - `POST /api/parse/ticket`（JSON `{ "text": "..." }`，返回结构化工单 TaskTicket JSON；演示页 http://localhost:9999/ticket.html）
+   - Rag检索接口：
+     - `GET  /api/rag/stream?message=...&conversationId=xxx`（RAG 流式问答，基于知识库检索回答；每轮双写 chat_log，复用 /api/chat/conversations?type=rag、/api/chat/history 做会话列表与历史回看，与聊天页互不串门）
+     - `POST /api/rag`（JSON `{ "message": "...", "conversationId": "xxx" }`，非流式 RAG 问答；演示页 http://localhost:9999/rag.html）
+   - **RAG 文件管理**（`rag.html` **右侧**「📁 文件管理」独立栏，避免挤占左侧会话/中间对话空间；支持选前预览、上传真实百分比进度、向量化进度条，手动控制是否进知识库）：
+     - `POST /api/rag/files`（单文件上传，field `file`；落盘 + 写 `rag_file` 记录，status=uploaded）
+     - `POST /api/rag/files/batch`（批量上传，field `files`）
+     - `GET  /api/rag/files`（文件列表，含索引状态）
+     - `POST /api/rag/files/{id}/index`（手动向量化：解析 → 切片 → bge-m3 向量化 → 写入向量库，status=indexed）
+     - `DELETE /api/rag/files/{id}/index`（移除索引：从向量库删该文件向量，保留文件与记录）
+     - `DELETE /api/rag/files/{id}`（彻底删除：移除索引 + 删物理文件 + 删记录）
 
 ## 双模型骨架说明
 - **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出、图片理解（V4 原生多模态输入）。
