@@ -45,6 +45,8 @@ server:
 rag:
   storage:
     dir: ./data/rag-files        # 上传文件落盘目录（元数据在 rag_file 表，文件本体在此）
+  seed:
+    force-reindex: false         # false：milvus 模式若集合已非空则跳过种子索引（防每次启动重复插入）；true：强制重建
   vectorstore:
     type: milvus                 # memory（默认，零依赖）| milvus（docker 起 Milvus 后切换）
     milvus:

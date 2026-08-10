@@ -39,7 +39,7 @@
 - `POST /api/parse/ticket`（JSON `{ "text": "..." }`，返回结构化工单 TaskTicket JSON；演示页 http://localhost:9999/ticket.html）
 - `GET  /api/rag/stream?message=...&conversationId=xxx`（RAG 流式问答，基于知识库检索回答；每轮双写 chat_log，复用 /api/chat/conversations?type=rag、/api/chat/history 做会话列表与历史回看，与聊天页互不串门）
 - `POST /api/rag`（JSON `{ "message": "...", "conversationId": "xxx" }`，非流式 RAG 问答；演示页 http://localhost:9999/rag.html）
-- **RAG 文件管理**（`rag.html` 左侧「📁 文件管理」面板，手动控制是否进知识库）：
+- **RAG 文件管理**（`rag.html` **右侧**「📁 文件管理」独立栏，避免挤占左侧会话/中间对话空间；支持选前预览、上传真实百分比进度、向量化进度条，手动控制是否进知识库）：
   - `POST /api/rag/files`（单文件上传，field `file`；落盘 + 写 `rag_file` 记录，status=uploaded）
   - `POST /api/rag/files/batch`（批量上传，field `files`）
   - `GET  /api/rag/files`（文件列表，含索引状态）
@@ -80,8 +80,10 @@
 - **文件管理（手动控制检索增强开关）**：新增 `rag_file` 表（id / filename / content_type / size / storage_path / status / doc_ids / 时间戳）。文件本体落盘到 `data/rag-files/`，元数据存库。上传只落盘（status=uploaded），**点「向量化」才切片 + bge-m3 向量化 + 写入向量库**（status=indexed），「移除索引」可回退，「删除」连文件带向量一起清。支持单文件 / 批量上传，多格式由 Tika 统一解析。
 - **多格式解析**：`TikaDocumentReader` 一把覆盖 PDF / Word / Excel / PPT / TXT / MD（按文件扩展名自动选解析器），无需为每种格式写专门代码。
 - **向量库可切换（内存 ↔ Milvus）**：`RagConfig` 的 `VectorStore` Bean 由 `rag.vectorstore.type` 控制——`memory`（默认，零依赖）或 `milvus`。业务侧（`QuestionAnswerAdvisor` / `RagService`）只依赖 `VectorStore` 抽象，切换实现零改动。Milvus 维度固定 1024 对齐 bge-m3；`docker/milvus-standalone.yml` 提供 etcd + minio + milvus 单机版一键启动。
+  - **坑**：Spring AI 1.1.2 的 `MilvusVectorStore` 把 `doc_id` 字段**硬编码为 `VarChar(36)` 且不可配置**。上传文件的文档 ID 必须用 ≤36 字符的有效字符串，否则 insert 报 `io.milvus.exception.ParamException: Type mismatch for field 'doc_id'`。本项目的 `RagFileService` 已用「去横杠 UUID（32 字符）」作为 doc id，`fileId` 仍留在 metadata 中用于按文件移除索引。
 - **离线模式（RAG 问答可断网）**：检索增强的「嵌入（Ollama bge-m3）+ 向量库（本地）」本就本地；唯一外网依赖是「生成」用的 DeepSeek。把 `rag.offline.enabled=true` 即可让生成切到本地 Ollama LLM（如 qwen2.5 / deepseek-r1），实现**全链路离线**。取舍：本地模型更慢、质量略低，需提前 `ollama pull` 对应模型。
 - 启动仍自动索引 `classpath:rag-docs/*`（开箱即有内容可问）；用户上传文件走手动向量化，两者共存于同一向量库。
+  - **防重复（种子索引守卫）**：`memory` 模式每次启动本就空，照常索引；`milvus` 模式因数据持久化，若集合已非空则**跳过**种子索引（`RagConfig.loadRagDocuments` 用 `vectorStore.similaritySearch(topK=1)` 探空判断），避免每次启动都重复 insert 同一批文档导致越积越多。需强制重建时设 `rag.seed.force-reindex=true`。
 
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页

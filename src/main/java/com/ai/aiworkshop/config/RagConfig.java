@@ -8,6 +8,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.milvus.MilvusVectorStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +35,9 @@ import java.util.Map;
  *    因此 Milvus 的 embeddingDimension 也对齐 1024（错配会导致建集合失败）。
  * 3. 应用启动时（CommandLineRunner）扫描 classpath:rag-docs/* 的 .md/.txt 自动建索引
  *    （保留“开箱即有内容可问”的演示种子；用户上传的文件走 RagFileController 手动向量化）。
+ *    —— 防重复：memory 模式每次启动本就空，照常索引；milvus 模式若集合已非空则跳过种子索引，
+ *       避免每次启动都重复 insert 同一批文档（Milvus 持久化，重复会越积越多）。
+ *       需强制重建时设 rag.seed.force-reindex=true。
  * 4. 与对话记忆完全解耦：VectorStore 存文档向量，ChatMemory 存对话历史。
  */
 @Configuration
@@ -77,10 +81,25 @@ public class RagConfig {
     /**
      * 启动即建索引：把 rag-docs 里的文档读进来、切片、写入向量库。
      * 用 CommandLineRunner 保证在 Web 容器就绪后、首次请求前完成。
+     * 防重复：milvus 模式若集合已非空则跳过（force-reindex=true 时强制重建）。
      */
     @Bean
-    public org.springframework.boot.CommandLineRunner loadRagDocuments(VectorStore vectorStore) {
+    public org.springframework.boot.CommandLineRunner loadRagDocuments(VectorStore vectorStore,
+            @Value("${rag.vectorstore.type:memory}") String type,
+            @Value("${rag.seed.force-reindex:false}") boolean forceReindex) {
         return args -> {
+            // milvus 持久化，避免每次启动重复 insert 同一批种子文档：
+            // 集合已非空（说明之前索引过）就跳过，除非显式强制重建。
+            if ("milvus".equalsIgnoreCase(type) && !forceReindex) {
+                List<Document> probe = vectorStore.similaritySearch(
+                        SearchRequest.builder().query("__seed_probe__").topK(1).build());
+                if (probe != null && !probe.isEmpty()) {
+                    System.out.println("[RAG] 向量库已有 " + probe.size()
+                            + " 条以上数据，跳过 rag-docs 种子索引（如需强制重建设 rag.seed.force-reindex=true）");
+                    return;
+                }
+            }
+
             TokenTextSplitter splitter = new TokenTextSplitter(); // 默认按 token 切，带重叠
             List<Document> allDocs = new ArrayList<>();
 

@@ -11,3 +11,4 @@ target/
 .vscode
 
 docker/volumes
+data/rag-files

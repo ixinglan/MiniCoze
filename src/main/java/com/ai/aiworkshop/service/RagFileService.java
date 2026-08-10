@@ -121,14 +121,17 @@ public class RagFileService {
             chunks.addAll(splitter.split(List.of(doc)));
         }
 
-        // 分配稳定文档 ID（fileId#序号），并补 fileId 元数据，便于按文件移除索引
-        // 注意：Document 无 setId，需通过「带 id 的构造器」重建（id 为第一参数，content 用 getText()）
+        // 分配稳定文档 ID 并补 fileId 元数据，便于按文件移除索引。
+        // 注意：Document 无 setId，需通过「带 id 的构造器」重建（id 为第一参数，content 用 getText()）。
+        // 关键坑：Spring AI 1.1.2 的 MilvusVectorStore 把 doc_id 字段硬编码为 VarChar(36) 且不可配置，
+        // 因此 doc id 必须是“有效字符串且 ≤36 字符”，否则 insert 报 ParamException(Type mismatch)。
+        // 故用“去横杠 UUID”（32 字符，恒 ≤36），fileId 仍留在 metadata 里仅供溯源/移除使用。
         List<String> docIds = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
             Document chunk = chunks.get(i);
             Map<String, Object> meta = new LinkedHashMap<>(chunk.getMetadata());
             meta.put("fileId", fileId);
-            String docId = fileId + "#" + i;
+            String docId = UUID.randomUUID().toString().replace("-", "");
             chunks.set(i, new Document(docId, chunk.getText(), meta));
             docIds.add(docId);
         }

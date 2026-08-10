@@ -10,7 +10,8 @@
     body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
            color: #222; background: #fff; }
     .app { display: flex; height: 100vh; }
-    /* 左侧会话栏（与聊天页一致） */
+
+    /* ===== 左侧：会话栏 ===== */
     .sidebar { width: 260px; flex: 0 0 260px; background: #f5f6f8;
                border-right: 1px solid #eaeaea; display: flex; flex-direction: column; }
     .sidebar h1 { font-size: 15px; margin: 0; padding: 16px; color: #333;
@@ -30,7 +31,8 @@
     .conv-item .del { border: none; background: transparent; color: #bbb; cursor: pointer;
                       font-size: 13px; padding: 2px 6px; border-radius: 6px; }
     .conv-item .del:hover { background: #ffd9d9; color: #e23; }
-    /* 右侧主区 */
+
+    /* ===== 中间：对话主区 ===== */
     .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
     .topbar { padding: 14px 20px; border-bottom: 1px solid #eee; font-size: 14px; color: #666; }
     .hint { font-size: 12px; color: #6b7280; padding: 6px 20px 0; }
@@ -48,61 +50,77 @@
     .send:hover { background: #1f5be0; }
     .empty { color: #aaa; text-align: center; margin-top: 40px; font-size: 14px; }
 
-    /* ===== 文件管理面板 ===== */
-    .fm { border-bottom: 1px solid #eaeaea; background: #eef1f6; }
-    .fm-head { display: flex; align-items: center; justify-content: space-between;
-               padding: 10px 12px; font-size: 13px; font-weight: 600; color: #333; }
-    .fm-toggle { border: none; background: transparent; cursor: pointer; font-size: 12px; color: #185fa5; }
-    .fm-body { padding: 0 10px 10px; }
-    .fm-upload { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
-    .fm-label { font-size: 12px; color: #185fa5; cursor: pointer; border: 1px dashed #b9c6e0;
-                padding: 6px 8px; border-radius: 6px; flex: 1; overflow: hidden; white-space: nowrap;
-                text-overflow: ellipsis; }
-    .fm-label input { display: none; }
-    .fm-upload-btn { border: none; background: #2b6cff; color: #fff; border-radius: 6px;
-                     padding: 6px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
-    .fm-upload-btn:hover { background: #1f5be0; }
-    .fm-upload-btn:disabled { background: #b9c6e0; cursor: default; }
-    .file-list { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-    .file-item { background: #fff; border: 1px solid #e6e8ee; border-radius: 8px; padding: 8px; }
+    /* ===== 右侧：文件管理 ===== */
+    .files { width: 320px; flex: 0 0 320px; background: #f5f6f8;
+             border-left: 1px solid #eaeaea; display: flex; flex-direction: column; }
+    .files-head { font-size: 14px; font-weight: 600; color: #333; padding: 14px 14px 10px;
+                  border-bottom: 1px solid #eaeaea; display: flex; align-items: center; gap: 6px; }
+    .files-head .sub { font-size: 11px; color: #6b7280; font-weight: 400; margin-left: auto; }
+    .files-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* 选择 + 预览区 */
+    .pick-zone { background: #fff; border: 1px solid #e6e8ee; border-radius: 10px; padding: 10px; }
+    .choose-btn { display: block; text-align: center; font-size: 13px; color: #185fa5;
+                  border: 1px dashed #b9c6e0; border-radius: 8px; padding: 9px; cursor: pointer;
+                  background: #f7faff; }
+    .choose-btn:hover { background: #eef4ff; }
+    .choose-btn input { display: none; }
+    .pick-list { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+    .pick-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
+                 background: #f3f5f9; border-radius: 6px; padding: 5px 8px; }
+    .pick-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .pick-size { color: #888; white-space: nowrap; }
+    .pick-del { border: none; background: transparent; color: #bbb; cursor: pointer; font-size: 13px;
+                padding: 0 4px; border-radius: 5px; }
+    .pick-del:hover { background: #ffd9d9; color: #e23; }
+    .pick-empty { font-size: 11px; color: #9aa3b2; padding: 4px 2px; }
+
+    /* 上传进度条 */
+    .progress { margin-top: 8px; display: none; }
+    .progress.show { display: block; }
+    .bar { height: 7px; background: #e3e8f0; border-radius: 5px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; width: 0%; background: #2b6cff;
+               transition: width .15s ease; }
+    .bar.indeterminate > i { width: 35% !important; animation: indet 1.1s infinite ease-in-out; }
+    @keyframes indet { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+    .progress-text { font-size: 11px; color: #185fa5; margin-top: 4px; }
+
+    .upload-btn { margin-top: 8px; width: 100%; border: none; background: #2b6cff; color: #fff;
+                  border-radius: 8px; padding: 8px; font-size: 13px; cursor: pointer; }
+    .upload-btn:hover { background: #1f5be0; }
+    .upload-btn:disabled { background: #b9c6e0; cursor: default; }
+    .fm-hint { font-size: 11px; color: #6b7280; padding: 4px 2px 0; line-height: 1.5; }
+
+    /* 已上传文件列表 */
+    .file-list { display: flex; flex-direction: column; gap: 8px; }
+    .file-item { background: #fff; border: 1px solid #e6e8ee; border-radius: 10px; padding: 9px; }
     .file-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; }
     .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
     .file-size { color: #888; font-size: 11px; white-space: nowrap; }
     .badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
     .badge.uploaded { background: #fff3e0; color: #b26a00; }
     .badge.indexed { background: #e3f6e8; color: #1a8a3c; }
-    .file-actions { display: flex; gap: 4px; margin-top: 6px; }
+    .badge.busy { background: #e7efff; color: #185fa5; }
+    .file-actions { display: flex; gap: 4px; margin-top: 7px; }
     .file-actions button { border: 1px solid #d6dae3; background: #fff; border-radius: 6px;
                             padding: 3px 8px; font-size: 11px; cursor: pointer; color: #333; }
     .file-actions button:hover { background: #f0f3f8; }
+    .file-actions button:disabled { opacity: .5; cursor: default; }
     .file-actions button.danger { color: #e23; border-color: #f3c2c2; }
     .file-actions button.primary { background: #2b6cff; color: #fff; border-color: #2b6cff; }
-    .fm-hint { font-size: 11px; color: #6b7280; padding: 4px 2px 0; line-height: 1.5; }
+    .file-actions button.primary:disabled { background: #b9c6e0; border-color: #b9c6e0; }
   </style>
 </head>
 <body>
   <div class="app">
+    <!-- 左：会话栏 -->
     <aside class="sidebar">
       <h1>📚 知识库会话 <a class="back" href="/">← 聊天</a></h1>
-      <div class="fm">
-        <div class="fm-head">📁 文件管理
-          <button class="fm-toggle" id="fmToggle" onclick="toggleFm()">▾</button>
-        </div>
-        <div class="fm-body" id="fmBody">
-          <div class="fm-upload">
-            <label class="fm-label">＋ 选择文件（可多选）
-              <input type="file" id="fileInput" multiple
-                     accept=".md,.txt,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
-            </label>
-            <button class="fm-upload-btn" id="uploadBtn" onclick="uploadFiles()">上传</button>
-          </div>
-          <div class="fm-hint">上传后点「向量化」才进知识库；支持 PDF/Word/Excel/PPT/TXT/MD。</div>
-          <div id="fileList" class="file-list"></div>
-        </div>
-      </div>
       <button id="newBtn" onclick="newChat()">+ 新对话</button>
       <div id="convList" class="conv-list"></div>
     </aside>
+
+    <!-- 中：对话 -->
     <main class="main">
       <div class="topbar" id="curTitle">未选择会话</div>
       <div class="hint">基于本地知识库（rag-docs）检索回答，支持多轮对话与历史回看。试试："年假有几天？"、"为什么用 bge-m3 做向量化？"</div>
@@ -112,6 +130,28 @@
         <button class="send" onclick="send()">发送</button>
       </div>
     </main>
+
+    <!-- 右：文件管理 -->
+    <aside class="files">
+      <div class="files-head">📁 文件管理 <span class="sub">上传后需手动向量化</span></div>
+      <div class="files-body">
+        <div class="pick-zone">
+          <label class="choose-btn">＋ 选择文件（可多选，支持 PDF/Word/Excel/PPT/TXT/MD）
+            <input type="file" id="fileInput" multiple
+                   accept=".md,.txt,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
+          </label>
+          <!-- 选前预览：未上传即可看到要传哪些文件，可逐个删除 -->
+          <div id="pickList" class="pick-list"></div>
+          <div class="progress" id="upProgress">
+            <div class="bar" id="upBar"><i></i></div>
+            <div class="progress-text" id="upText">上传中 0%</div>
+          </div>
+          <button class="upload-btn" id="uploadBtn" onclick="uploadFiles()">上传选中文件</button>
+          <div class="fm-hint">选好文件后点「上传选中文件」；待向量化的文件点「向量化」才进知识库。</div>
+        </div>
+        <div id="fileList" class="file-list"></div>
+      </div>
+    </aside>
   </div>
 
   <script>
@@ -120,20 +160,17 @@
     const convList = document.getElementById('convList');
     const curTitle = document.getElementById('curTitle');
 
-    // 只存“当前会话 ID”在 sessionStorage（刷新后重新选中并从后端拉历史），不再存消息本身
     let currentConvId = sessionStorage.getItem('ragCurrentConvId') || null;
     let convListData = [];
 
+    // ---------- 会话 ----------
     async function loadConversations() {
       const res = await fetch('/api/chat/conversations?type=rag');
       convListData = await res.json();
       applySelection();
     }
-
-    // 根据 currentConvId 决定选中哪个会话并加载历史
     function applySelection() {
       if (currentConvId && convListData.some(c => c.id === currentConvId)) {
-        // 保持当前选择
       } else if (convListData.length > 0) {
         currentConvId = convListData[0].id;
         sessionStorage.setItem('ragCurrentConvId', currentConvId);
@@ -145,7 +182,6 @@
       if (currentConvId) loadHistory(currentConvId);
       else curTitle.textContent = '未选择会话';
     }
-
     function renderConversations() {
       convList.innerHTML = '';
       for (const c of convListData) {
@@ -165,14 +201,12 @@
         convList.appendChild(item);
       }
     }
-
     async function selectConversation(id) {
       currentConvId = id;
       sessionStorage.setItem('ragCurrentConvId', id);
       renderConversations();
       await loadHistory(id);
     }
-
     async function loadHistory(id) {
       const res = await fetch('/api/chat/history?conversationId=' + encodeURIComponent(id));
       const history = await res.json();
@@ -182,18 +216,15 @@
       const c = convListData.find(x => x.id === id);
       curTitle.textContent = c ? (c.title || '新对话') : '未选择会话';
     }
-
     async function newChat() {
       const res = await fetch('/api/chat/conversations?type=rag', { method: 'POST' });
       const data = await res.json();
       currentConvId = data.id;
       sessionStorage.setItem('ragCurrentConvId', currentConvId);
-      convListData = [];
       chat.innerHTML = '';
       curTitle.textContent = '新对话';
       await loadConversations();
     }
-
     async function deleteConversation(id) {
       await fetch('/api/chat/conversation?conversationId=' + encodeURIComponent(id), { method: 'DELETE' });
       if (id === currentConvId) {
@@ -204,26 +235,22 @@
       }
       await loadConversations();
     }
-
     function appendBubble(role, text) {
       const d = document.createElement('div');
       d.className = role === 'user' ? 'user' : 'bot';
       const span = document.createElement('span');
-      span.textContent = text;            // textContent 自动转义，避免 XSS
+      span.textContent = text;
       d.appendChild(span);
       chat.appendChild(d);
       return span;
     }
-
     async function send() {
       const text = msg.value.trim();
       if (!text) return;
-      if (!currentConvId) await newChat();  // 极端情况兜底：没有会话就先建一个
+      if (!currentConvId) await newChat();
       msg.value = '';
-
       appendBubble('user', text);
       chat.scrollTop = chat.scrollHeight;
-
       const botSpan = appendBubble('bot', '');
       const es = new EventSource('/api/rag/stream?message=' + encodeURIComponent(text)
                                   + '&conversationId=' + encodeURIComponent(currentConvId));
@@ -232,22 +259,20 @@
         botSpan.textContent += e.data;
         chat.scrollTop = chat.scrollHeight;
       };
-      // 服务端 SseEmitter 完成后连接关闭，触发 onerror：关闭并刷新列表（更新标题/排序）
-      es.onerror = () => {
-        es.close();
-        loadConversations();
-      };
+      es.onerror = () => { es.close(); loadConversations(); };
     }
-
     msg.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
 
-    // ===== 文件管理 =====
-    let fmOpen = true;
-    function toggleFm() {
-      fmOpen = !fmOpen;
-      document.getElementById('fmBody').style.display = fmOpen ? 'block' : 'none';
-      document.getElementById('fmToggle').textContent = fmOpen ? '▾' : '▸';
-    }
+    // ---------- 文件管理 ----------
+    let pendingFiles = [];   // 已选未传的文件（选前预览用）
+    let lastFileList = [];   // 已上传文件列表缓存（用于乐观刷新）
+    let busyId = null;       // 正在向量化的文件 id（驱动进度条）
+
+    document.getElementById('fileInput').addEventListener('change', e => {
+      for (const f of e.target.files) pendingFiles.push(f);
+      e.target.value = '';   // 重置，允许重复选同一文件
+      renderPicks();
+    });
 
     function fmtSize(n) {
       if (!n && n !== 0) return '';
@@ -256,38 +281,78 @@
       return (n / 1024 / 1024).toFixed(1) + ' MB';
     }
 
-    async function uploadFiles() {
-      const input = document.getElementById('fileInput');
-      const files = input.files;
-      if (!files || files.length === 0) { alert('请先选择文件'); return; }
-      const btn = document.getElementById('uploadBtn');
-      btn.disabled = true; btn.textContent = '上传中…';
-      try {
-        let res;
-        if (files.length === 1) {
-          const fd = new FormData();
-          fd.append('file', files[0]);
-          res = await fetch('/api/rag/files', { method: 'POST', body: fd });
-        } else {
-          const fd = new FormData();
-          for (const f of files) fd.append('files', f);
-          res = await fetch('/api/rag/files/batch', { method: 'POST', body: fd });
-        }
-        if (!res.ok) throw new Error('上传失败: ' + res.status);
-        input.value = '';
-        await loadFiles();
-      } catch (e) {
-        alert('上传出错：' + e.message);
-      } finally {
-        btn.disabled = false; btn.textContent = '上传';
+    // 选前预览列表（未上传即可看到要传哪些，可逐个移除）
+    function renderPicks() {
+      const el = document.getElementById('pickList');
+      el.innerHTML = '';
+      if (pendingFiles.length === 0) {
+        el.innerHTML = '<div class="pick-empty">尚未选择文件</div>';
+        document.getElementById('uploadBtn').disabled = true;
+        return;
       }
+      document.getElementById('uploadBtn').disabled = false;
+      pendingFiles.forEach((f, idx) => {
+        const row = document.createElement('div');
+        row.className = 'pick-item';
+        const name = document.createElement('span');
+        name.className = 'pick-name'; name.textContent = f.name;
+        const size = document.createElement('span');
+        size.className = 'pick-size'; size.textContent = fmtSize(f.size);
+        const del = document.createElement('button');
+        del.className = 'pick-del'; del.textContent = '✕'; del.title = '移除';
+        del.onclick = () => { pendingFiles.splice(idx, 1); renderPicks(); };
+        row.appendChild(name); row.appendChild(size); row.appendChild(del);
+        el.appendChild(row);
+      });
+    }
+
+    // 上传：用 XHR 显示真实百分比进度
+    function uploadFiles() {
+      if (pendingFiles.length === 0) { alert('请先选择文件'); return; }
+      const fd = new FormData();
+      for (const f of pendingFiles) fd.append('files', f);
+
+      const prog = document.getElementById('upProgress');
+      const bar = document.getElementById('upBar');
+      const barI = bar.querySelector('i');
+      const text = document.getElementById('upText');
+      const btn = document.getElementById('uploadBtn');
+      prog.classList.add('show');
+      bar.classList.remove('indeterminate');
+      barI.style.width = '0%';
+      text.textContent = '上传中 0%';
+      btn.disabled = true;
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/rag/files/batch');
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round(e.loaded / e.total * 100);
+          barI.style.width = pct + '%';
+          text.textContent = '上传中 ' + pct + '%';
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          text.textContent = '上传完成 ✓（' + pendingFiles.length + ' 个文件）';
+          pendingFiles = [];
+          renderPicks();
+          setTimeout(() => { prog.classList.remove('show'); }, 1200);
+          loadFiles();
+        } else {
+          text.textContent = '上传失败：HTTP ' + xhr.status;
+          btn.disabled = false;
+        }
+      };
+      xhr.onerror = () => { text.textContent = '上传出错（网络异常）'; btn.disabled = false; };
+      xhr.send(fd);
     }
 
     async function loadFiles() {
       try {
         const res = await fetch('/api/rag/files');
-        const list = await res.json();
-        renderFiles(list || []);
+        lastFileList = await res.json() || [];
+        renderFiles(lastFileList);
       } catch (e) { /* 忽略列表加载错误 */ }
     }
 
@@ -295,10 +360,11 @@
       const el = document.getElementById('fileList');
       el.innerHTML = '';
       if (list.length === 0) {
-        el.innerHTML = '<div class="fm-hint">还没有文件，先上传一个试试。</div>';
+        el.innerHTML = '<div class="fm-hint">还没有已上传文件。左侧选好文件后点「上传选中文件」。</div>';
         return;
       }
       for (const f of list) {
+        const busy = (f.id === busyId);
         const item = document.createElement('div');
         item.className = 'file-item';
         const meta = document.createElement('div');
@@ -308,59 +374,73 @@
         const size = document.createElement('span');
         size.className = 'file-size'; size.textContent = fmtSize(f.size);
         const badge = document.createElement('span');
-        badge.className = 'badge ' + f.status;
-        badge.textContent = f.status === 'indexed' ? '已索引' : '待向量化';
+        badge.className = 'badge ' + (busy ? 'busy' : f.status);
+        badge.textContent = busy ? '向量化中' : (f.status === 'indexed' ? '已索引' : '待向量化');
         meta.appendChild(name); meta.appendChild(size); meta.appendChild(badge);
 
         const actions = document.createElement('div');
         actions.className = 'file-actions';
-        if (f.status !== 'indexed') {
-          const idx = document.createElement('button');
-          idx.className = 'primary'; idx.textContent = '向量化';
-          idx.onclick = () => indexFile(f.id);
-          actions.appendChild(idx);
-        } else {
+        if (f.status === 'indexed') {
           const rm = document.createElement('button');
           rm.textContent = '移除索引';
           rm.onclick = () => removeIndexFile(f.id);
           actions.appendChild(rm);
+        } else if (!busy) {
+          const idx = document.createElement('button');
+          idx.className = 'primary'; idx.textContent = '向量化';
+          idx.onclick = () => indexFile(f.id);
+          actions.appendChild(idx);
         }
         const del = document.createElement('button');
         del.className = 'danger'; del.textContent = '删除';
         del.onclick = () => deleteFile(f.id);
         actions.appendChild(del);
-
         item.appendChild(meta); item.appendChild(actions);
+
+        // 向量化进度条（不定长动画 + 步骤文案）
+        if (busy) {
+          const p = document.createElement('div');
+          p.className = 'progress show';
+          p.innerHTML = '<div class="bar indeterminate"><i></i></div>'
+                      + '<div class="progress-text">正在向量化：解析文档 → 切片 → 嵌入(bge-m3) → 写入向量库…</div>';
+          item.appendChild(p);
+        }
         el.appendChild(item);
       }
     }
 
+    // 向量化：先立即显示进度条，请求返回后刷新真实状态
     async function indexFile(id) {
+      busyId = id;
+      renderFiles(lastFileList);   // 乐观刷新，马上看到“向量化中”
       try {
         const res = await fetch('/api/rag/files/' + encodeURIComponent(id) + '/index', { method: 'POST' });
-        if (!res.ok) throw new Error('向量化失败: ' + res.status);
+        if (!res.ok) throw new Error('向量化失败: HTTP ' + res.status);
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        busyId = null;
         await loadFiles();
-      } catch (e) { alert(e.message); }
+      }
     }
-
     async function removeIndexFile(id) {
       try {
         const res = await fetch('/api/rag/files/' + encodeURIComponent(id) + '/index', { method: 'DELETE' });
-        if (!res.ok) throw new Error('移除失败: ' + res.status);
+        if (!res.ok) throw new Error('移除失败: HTTP ' + res.status);
         await loadFiles();
       } catch (e) { alert(e.message); }
     }
-
     async function deleteFile(id) {
       if (!confirm('确认删除该文件及其索引？')) return;
       try {
         const res = await fetch('/api/rag/files/' + encodeURIComponent(id), { method: 'DELETE' });
-        if (!res.ok) throw new Error('删除失败: ' + res.status);
+        if (!res.ok) throw new Error('删除失败: HTTP ' + res.status);
         await loadFiles();
       } catch (e) { alert(e.message); }
     }
 
-    // 页面加载：拉取会话列表 + 文件列表，自动选中并还原历史
+    // 页面加载
+    renderPicks();
     loadFiles();
     loadConversations();
   </script>
