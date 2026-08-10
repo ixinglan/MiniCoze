@@ -121,13 +121,17 @@ public class ChatClientConfig {
                                   WeatherTool weatherTool,
                                   RagQueryTool ragQueryTool,
                                   CreateTaskTool createTaskTool,
+                                  ChatMemory chatMemory,
                                   @Value("${rag.offline.enabled:false}") boolean offline) {
         // 离线模式：生成改用本地 Ollama LLM（工具本身是本地确定性逻辑，不受影响）
         ChatModel gen = offline ? ollama : deepSeek;
+        // 阶段 4 补全：挂记忆 Advisor（复用 chat/rag 同一套 JDBC 记忆仓库，按 conversationId 隔离），
+        // 让 agent 对话也能多轮记忆 + 持久化；工具调用与记忆可共存（ragClient 即同款叠加）。
         return ChatClient.builder(gen)
                 .defaultSystem("你是一个具备工具调用能力的 AI 助手。你拥有多个工具：获取当前时间、四则运算计算器、"
                         + "查询天气(模拟)、检索本地知识库、创建工单。请根据用户的需求，自主判断是否需要调用工具、"
                         + "调用哪一个、传什么参数，并基于工具的返回结果用简体中文回答。不要编造工具不存在的信息。")
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .defaultTools(dateTimeTool, calculatorTool, weatherTool, ragQueryTool, createTaskTool)
                 .build();
     }

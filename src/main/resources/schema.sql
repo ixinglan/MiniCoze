@@ -54,3 +54,28 @@ CREATE TABLE IF NOT EXISTS rag_file (
     indexed_at   TIMESTAMP    DEFAULT NULL,
     INDEX idx_rf_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 工单表（阶段 4 补全落库）：模型通过“创建工单”工具登记的待办。
+-- 设计要点（为后续阶段预留缝，避免返工）：
+--  - source：工单来源（agent=当前 Agent 工具 / mcp=阶段 7 MCP 工具 / subagent=阶段 6 子智能体），来源无关，统一落同一张表；
+--  - status：生命周期（open 待办 / done 已完成），供后续阶段更新（如 Agent 标记工单完成）；
+--  - conversation_id：关联到触发它的 agent 会话，便于溯源“哪个对话产生了这张工单”。
+--  - tags：关键词标签，存 JSON 字符串（列表序列化），读取时再解析。
+CREATE TABLE IF NOT EXISTS task_ticket (
+    id              VARCHAR(64)  PRIMARY KEY,
+    title           VARCHAR(255) DEFAULT NULL,
+    category        VARCHAR(32)  DEFAULT NULL,
+    priority        VARCHAR(16)  DEFAULT NULL,
+    due_date        VARCHAR(20)  DEFAULT NULL,                 -- YYYY-MM-DD 或空
+    tags            TEXT,                                       -- JSON 数组字符串
+    description     TEXT,
+    need_follow_up  TINYINT(1)   DEFAULT 0,
+    status          VARCHAR(16)  NOT NULL DEFAULT 'open',
+    source          VARCHAR(32)  NOT NULL DEFAULT 'agent',
+    conversation_id VARCHAR(64)  DEFAULT NULL,
+    created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_tt_status (status),
+    INDEX idx_tt_source (source),
+    INDEX idx_tt_conv (conversation_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

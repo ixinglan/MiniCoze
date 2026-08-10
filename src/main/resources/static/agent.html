@@ -9,7 +9,21 @@
   * { box-sizing: border-box; }
   body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
          background:var(--bg); color:var(--text); }
-  .app { max-width: 860px; margin: 0 auto; padding: 24px 16px 120px; }
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { width: 240px; flex: 0 0 240px; background: var(--card); border-right: 1px solid var(--line);
+             padding: 16px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .sidebar h2 { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  #newConv { width: 100%; padding: 8px; border: 1px solid var(--primary); background: var(--primary); color: #fff;
+             border-radius: 8px; cursor: pointer; font-size: 13px; margin-bottom: 12px; }
+  #newConv:hover { filter: brightness(1.05); }
+  .conv-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; margin-bottom: 4px;
+               border: 1px solid transparent; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .conv-item:hover { background: var(--bg); }
+  .conv-item.active { background: #eaf0ff; border-color: #cdddff; }
+  .conv-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .conv-del { color: var(--muted); font-size: 12px; border: none; background: none; cursor: pointer; padding: 0 2px; }
+  .conv-del:hover { color: #e5484d; }
+  .app { flex: 1; max-width: 860px; margin: 0 auto; padding: 24px 16px 120px; }
   header h1 { font-size: 20px; margin: 0 0 4px; }
   header p { color: var(--muted); font-size: 13px; margin: 0 0 16px; line-height: 1.6; }
   .log { display: flex; flex-direction: column; gap: 12px; }
@@ -34,13 +48,22 @@
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <h1>🛠️ Agent 工作台 · 工具调用演示</h1>
-    <p>模型不再只是“回答”，而是能“动手”：自主决定调用工具（获取时间 / 计算器 / 天气 / 知识库检索 / 创建工单），
-       基于工具返回结果作答。下方会实时展示<strong>模型这次调了哪些工具、传了什么参数</strong>。</p>
-  </header>
-  <div id="log" class="log"></div>
+<div class="layout">
+  <aside class="sidebar">
+    <h2>会话</h2>
+    <button id="newConv">+ 新对话</button>
+    <div id="convList"></div>
+  </aside>
+
+  <main class="app">
+    <header>
+      <h1>🛠️ Agent 工作台 · 工具调用演示</h1>
+      <p>模型不再只是“回答”，而是能“动手”：自主决定调用工具（获取时间 / 计算器 / 天气 / 知识库检索 / 创建工单），
+         基于工具返回结果作答。下方会实时展示<strong>模型这次调了哪些工具、传了什么参数</strong>。
+         对话记录与生成的工单都会落库，刷新/重开不丢失。</p>
+    </header>
+    <div id="log" class="log"></div>
+  </main>
 </div>
 
 <div class="input-bar">
@@ -48,13 +71,15 @@
     <input id="msg" placeholder="试试：现在几点了？帮我算 (123×456+789)；北京天气如何？知识库里怎么说的 XXX？帮我建个工单：上线前做安全扫描，优先级 P0" />
     <button id="send">发送</button>
   </div>
-  <div class="hint">提示：知识库检索需先上传并向量化文件（见 /rag.html）；创建工单后可访问 /api/agent/tasks 查看。</div>
+  <div class="hint">提示：知识库检索需先上传并向量化文件（见 /rag.html）；创建工单后可访问 /api/agent/tasks 查看（已从数据库读取）。</div>
 </div>
 
 <script>
+const convListEl = document.getElementById('convList');
 const logEl = document.getElementById('log');
 const input = document.getElementById('msg');
 const sendBtn = document.getElementById('send');
+let currentCid = null;
 
 function addBubble(role, text) {
   const d = document.createElement('div');
@@ -85,9 +110,60 @@ function addToolCalls(calls) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+async function loadConversations() {
+  const res = await fetch('/api/chat/conversations?type=agent');
+  const list = await res.json();
+  convListEl.innerHTML = '';
+  for (const c of list) {
+    const item = document.createElement('div');
+    item.className = 'conv-item' + (c.id === currentCid ? ' active' : '');
+    const title = document.createElement('div');
+    title.className = 'conv-title';
+    title.textContent = c.title || '新对话';
+    const del = document.createElement('button');
+    del.className = 'conv-del';
+    del.textContent = '✕';
+    del.title = '删除会话';
+    del.onclick = (e) => { e.stopPropagation(); deleteConversation(c.id); };
+    item.appendChild(title);
+    item.appendChild(del);
+    item.onclick = () => selectConversation(c.id);
+    convListEl.appendChild(item);
+  }
+}
+
+async function newConversation() {
+  const res = await fetch('/api/chat/conversations?type=agent', { method: 'POST' });
+  const data = await res.json();
+  currentCid = data.id;
+  localStorage.setItem('agentCid', currentCid);
+  logEl.innerHTML = '';
+  await loadConversations();
+  input.focus();
+}
+
+async function selectConversation(id) {
+  currentCid = id;
+  localStorage.setItem('agentCid', id);
+  await loadConversations();
+  logEl.innerHTML = '';
+  const res = await fetch('/api/chat/history?conversationId=' + encodeURIComponent(id));
+  const hist = await res.json();
+  for (const h of hist) addBubble(h.role, h.content);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function deleteConversation(id) {
+  if (!confirm('确定删除该会话？会话记录与关联工单将一并清理。')) return;
+  await fetch('/api/chat/conversation?conversationId=' + encodeURIComponent(id), { method: 'DELETE' });
+  if (currentCid === id) { currentCid = null; localStorage.removeItem('agentCid'); logEl.innerHTML = ''; }
+  await loadConversations();
+}
+
 async function send() {
   const msg = input.value.trim();
   if (!msg) return;
+  if (!currentCid) await newConversation();
   input.value = '';
   sendBtn.disabled = true;
   addBubble('user', msg);
@@ -96,17 +172,17 @@ async function send() {
     const res = await fetch('/api/agent/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg })
+      body: JSON.stringify({ message: msg, conversationId: currentCid })
     });
     const data = await res.json();
     thinking.remove();
     if (data.error) {
       addBubble('assistant', '⚠️ ' + data.error);
     } else {
-      if (Array.isArray(data.toolCalls) && data.toolCalls.length) {
-        addToolCalls(data.toolCalls);
-      }
+      if (Array.isArray(data.toolCalls) && data.toolCalls.length) addToolCalls(data.toolCalls);
       addBubble('assistant', data.answer || '(无回复)');
+      if (data.conversationId) currentCid = data.conversationId;
+      await loadConversations();   // 刷新排序 / 标题
     }
   } catch (e) {
     thinking.remove();
@@ -116,6 +192,16 @@ async function send() {
     input.focus();
   }
 }
+
+// 初始化：恢复上次会话，否则只加载列表
+(async () => {
+  const saved = localStorage.getItem('agentCid');
+  if (saved) {
+    const list = await (await fetch('/api/chat/conversations?type=agent')).json();
+    if (list.some(c => c.id === saved)) { await selectConversation(saved); return; }
+  }
+  await loadConversations();
+})();
 
 sendBtn.addEventListener('click', send);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });

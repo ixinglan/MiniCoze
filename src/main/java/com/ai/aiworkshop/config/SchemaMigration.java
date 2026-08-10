@@ -85,6 +85,37 @@ public class SchemaMigration implements CommandLineRunner {
                     alter.execute("ALTER TABLE rag_file ADD COLUMN content_hash CHAR(64) DEFAULT NULL");
                 }
             }
+
+            // 幂等建表：task_ticket（阶段 4 工单落库）。全新库由 schema.sql 建好；已存在库靠这里兜底。
+            boolean hasTaskTicket;
+            try (Statement check4 = conn.createStatement();
+                 ResultSet rs4 = check4.executeQuery(
+                         "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                         + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_ticket'")) {
+                hasTaskTicket = rs4.next() && rs4.getInt(1) > 0;
+            }
+            if (!hasTaskTicket) {
+                try (Statement create = conn.createStatement()) {
+                    create.execute("CREATE TABLE IF NOT EXISTS task_ticket ("
+                            + "id VARCHAR(64) PRIMARY KEY, "
+                            + "title VARCHAR(255) DEFAULT NULL, "
+                            + "category VARCHAR(32) DEFAULT NULL, "
+                            + "priority VARCHAR(16) DEFAULT NULL, "
+                            + "due_date VARCHAR(20) DEFAULT NULL, "
+                            + "tags TEXT, "
+                            + "description TEXT, "
+                            + "need_follow_up TINYINT(1) DEFAULT 0, "
+                            + "status VARCHAR(16) NOT NULL DEFAULT 'open', "
+                            + "source VARCHAR(32) NOT NULL DEFAULT 'agent', "
+                            + "conversation_id VARCHAR(64) DEFAULT NULL, "
+                            + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                            + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+                            + "INDEX idx_tt_status (status), "
+                            + "INDEX idx_tt_source (source), "
+                            + "INDEX idx_tt_conv (conversation_id)"
+                            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                }
+            }
         }
     }
 }
