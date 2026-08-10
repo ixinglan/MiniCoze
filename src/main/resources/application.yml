@@ -1,6 +1,10 @@
 spring:
   application:
     name: ai-workshop
+  # 流式（NDJSON / SSE）响应可能较长时间不结束：放宽异步请求超时，避免向量化中途被 Tomcat 断开
+  mvc:
+    async:
+      request-timeout: 600000   # 10 分钟
   # ===== 数据源：MySQL 持久化对话记忆（库已手动建好 mini_coze）=====
   datasource:
     url: jdbc:mysql://localhost:3306/mini_coze?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true

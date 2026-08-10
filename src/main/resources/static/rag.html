@@ -397,30 +397,74 @@
         actions.appendChild(del);
         item.appendChild(meta); item.appendChild(actions);
 
-        // 向量化进度条（不定长动画 + 步骤文案）
+        // 向量化进度条（后端流式真进度，初始 0%，带 id 供事件实时更新）
         if (busy) {
           const p = document.createElement('div');
           p.className = 'progress show';
-          p.innerHTML = '<div class="bar indeterminate"><i></i></div>'
-                      + '<div class="progress-text">正在向量化：解析文档 → 切片 → 嵌入(bge-m3) → 写入向量库…</div>';
+          p.id = 'prog-' + f.id;
+          p.innerHTML = '<div class="bar" id="bar-' + f.id + '"><i style="width:0%"></i></div>'
+                      + '<div class="progress-text" id="text-' + f.id + '">准备向量化…</div>';
           item.appendChild(p);
         }
         el.appendChild(item);
       }
     }
 
-    // 向量化：先立即显示进度条，请求返回后刷新真实状态
+    // 向量化：流式读取后端真实进度（解析 → 切片 → 嵌入 → 写入）
     async function indexFile(id) {
       busyId = id;
-      renderFiles(lastFileList);   // 乐观刷新，马上看到“向量化中”
+      renderFiles(lastFileList);   // 马上渲染出该文件的真实进度条（初始 0%）
       try {
         const res = await fetch('/api/rag/files/' + encodeURIComponent(id) + '/index', { method: 'POST' });
-        if (!res.ok) throw new Error('向量化失败: HTTP ' + res.status);
+        if (!res.ok || !res.body) {
+          setProgress(id, 100, '向量化失败：HTTP ' + res.status, true);
+          throw new Error('向量化失败: HTTP ' + res.status);
+        }
+        // 逐行解析 NDJSON 流，每收到一个事件就更新进度条
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line) continue;
+            let ev;
+            try { ev = JSON.parse(line); } catch (e) { continue; }
+            applyEvent(id, ev);
+          }
+        }
       } catch (e) {
-        alert(e.message);
+        setProgress(id, 100, (e && e.message) ? e.message : '向量化出错', true);
       } finally {
         busyId = null;
-        await loadFiles();
+        await loadFiles();   // 刷新真实状态（indexed / 失败回退 uploaded）
+      }
+    }
+
+    // 把后端事件映射到进度条
+    function applyEvent(id, ev) {
+      const pct = (typeof ev.percent === 'number') ? ev.percent : 0;
+      const txt = (ev.message || '') + (ev.detail ? ' · ' + ev.detail : '');
+      setProgress(id, pct, txt, ev.error === true);
+    }
+
+    function setProgress(id, pct, text, isError) {
+      const bar = document.getElementById('bar-' + id);
+      const textEl = document.getElementById('text-' + id);
+      if (bar) {
+        const i = bar.querySelector('i');
+        const w = Math.max(0, Math.min(100, pct));
+        i.style.width = w + '%';
+        i.style.background = isError ? '#e23' : '#2b6cff';
+      }
+      if (textEl) {
+        textEl.textContent = text;
+        textEl.style.color = isError ? '#e23' : '#185fa5';
       }
     }
     async function removeIndexFile(id) {

@@ -2,6 +2,7 @@ package com.ai.aiworkshop.controller;
 
 import com.ai.aiworkshop.entity.RagFileDO;
 import com.ai.aiworkshop.service.RagFileService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,8 +12,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,9 +34,11 @@ import java.util.Map;
 public class RagFileController {
 
     private final RagFileService ragFileService;
+    private final ObjectMapper objectMapper;
 
-    public RagFileController(RagFileService ragFileService) {
+    public RagFileController(RagFileService ragFileService, ObjectMapper objectMapper) {
         this.ragFileService = ragFileService;
+        this.objectMapper = objectMapper;
     }
 
     /** 单文件上传：field name = "file" */
@@ -49,11 +57,41 @@ public class RagFileController {
         return res;
     }
 
-    /** 手动向量化：把文件切片 + 向量化后写入向量库 */
-    @PostMapping("/{id}/index")
-    public Map<String, Object> index(@PathVariable String id) throws IOException {
-        ragFileService.index(id);
-        return Map.of("ok", true, "id", id, "status", "indexed");
+    /**
+     * 手动向量化（流式真进度）：后端边解析/切片/逐片嵌入/写入，边往前端推 NDJSON 事件。
+     * 用 StreamingResponseBody 把响应体以流的形式写出，每收到一个进度事件就 flush 一行 JSON，
+     * 前端用 fetch + ReadableStream 逐行解析即可实时渲染真实进度条；失败也会推 error 事件。
+     */
+    @PostMapping(value = "/{id}/index", produces = "application/x-ndjson")
+    public StreamingResponseBody index(@PathVariable String id) {
+        return outputStream -> {
+            Writer writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
+            try {
+                ragFileService.indexWithProgress(id, event -> {
+                    try {
+                        writer.write(objectMapper.writeValueAsString(event));
+                        writer.write('\n');
+                        writer.flush();   // 每来一个事件立即推给前端，实现“真进度”
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (Exception e) {
+                // 整段失败：补发一条 error 事件，让前端把进度条变红并提示原因
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("stage", "error");
+                err.put("step", 4);
+                err.put("totalSteps", 4);
+                err.put("message", "向量化失败");
+                err.put("detail", e.getMessage());
+                err.put("percent", 100);
+                err.put("done", false);
+                err.put("error", true);
+                writer.write(objectMapper.writeValueAsString(err));
+                writer.write('\n');
+                writer.flush();
+            }
+        };
     }
 
     /** 移除索引：从向量库删掉该文件的向量，但保留文件与记录 */

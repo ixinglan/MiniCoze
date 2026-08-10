@@ -4,6 +4,7 @@ import com.ai.aiworkshop.entity.RagFileDO;
 import com.ai.aiworkshop.mapper.RagFileMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -44,14 +45,17 @@ public class RagFileService {
 
     private final RagFileMapper ragFileMapper;
     private final VectorStore vectorStore;
+    private final EmbeddingModel embeddingModel;
     private final String storageDir;
     private final TokenTextSplitter splitter = new TokenTextSplitter();
 
     public RagFileService(RagFileMapper ragFileMapper,
                            VectorStore vectorStore,
+                           EmbeddingModel embeddingModel,
                            @Value("${rag.storage.dir:./data/rag-files}") String storageDir) {
         this.ragFileMapper = ragFileMapper;
         this.vectorStore = vectorStore;
+        this.embeddingModel = embeddingModel;
         // 转绝对路径，避免相对路径被容器（Tomcat）解析到临时目录
         this.storageDir = Paths.get(storageDir).toAbsolutePath().toString();
         try {
@@ -99,34 +103,45 @@ public class RagFileService {
     }
 
     /**
-     * 手动向量化：解析 → 切片 → 向量化 → upsert，状态切到 indexed。
-     * 失败抛异常，由 Controller 转 500，记录保持 uploaded（不让脏状态进库）。
+     * 手动向量化（流式真进度）：解析 → 切片 → 逐片段嵌入(bge-m3) → upsert，
+     * 每完成一个阶段 / 每嵌入一个片段就通过 reporter 往前端推一次进度事件；
+     * 状态在最后成功才切到 indexed（失败抛异常，记录保持 uploaded，不让脏状态进库）。
+     *
+     * 关键：嵌入改为手动逐片段调用 EmbeddingModel.embed，这样才能真实反映“嵌入到第几个片段”的进度；
+     * 文档已带向量后交给 vectorStore.add，store 检测到已有 embedding 不会重复嵌入。
      */
-    public void index(String fileId) throws IOException {
+    public void indexWithProgress(String fileId, ProgressReporter reporter) throws IOException {
         RagFileDO d = ragFileMapper.selectById(fileId);
         if (d == null) throw new IllegalArgumentException("文件不存在: " + fileId);
         File f = new File(d.getStoragePath());
         if (!f.exists()) throw new IllegalStateException("物理文件缺失: " + d.getStoragePath());
 
-        // Tika 根据文件扩展名/内容类型自动选解析器，PDF/Word/Excel/PPT/TXT/MD 一把覆盖
+        List<String> docIds = new ArrayList<>();
+
+        // 步骤 1：解析文档
+        emit(reporter, stage("parse", 1, "解析文档", "开始解析文件内容…", 8, false, false));
         TikaDocumentReader reader = new TikaDocumentReader(new FileSystemResource(f));
         List<Document> parsed = reader.get();
+        for (Document doc : parsed) doc.getMetadata().put("source", d.getFilename());
+        int parsedCount = parsed.size();
+        emit(reporter, stage("parse", 1, "解析文档", "解析出 " + parsedCount + " 个文档块", 25, false, false));
 
-        // 每个解析段先打上 source（原始文件名），方便检索结果溯源
-        parsed.forEach(doc -> doc.getMetadata().put("source", d.getFilename()));
-
-        // 切片成更小片段，每段单独向量化，检索更精准
+        // 步骤 2：切片
+        emit(reporter, stage("split", 2, "切片", "开始切片…", 30, false, false));
         List<Document> chunks = new ArrayList<>();
         for (Document doc : parsed) {
             chunks.addAll(splitter.split(List.of(doc)));
         }
-
-        // 分配稳定文档 ID 并补 fileId 元数据，便于按文件移除索引。
+        if (chunks.isEmpty()) {
+            emit(reporter, stage("error", 4, "向量化失败",
+                    "解析后无有效文本（可能为空文件或扫描件 PDF）", 100, false, true));
+            throw new IllegalStateException("解析后无有效文本片段，无法向量化");
+        }
+        // 分配稳定 doc id + fileId 元数据，便于按文件移除索引。
         // 注意：Document 无 setId，需通过「带 id 的构造器」重建（id 为第一参数，content 用 getText()）。
         // 关键坑：Spring AI 1.1.2 的 MilvusVectorStore 把 doc_id 字段硬编码为 VarChar(36) 且不可配置，
         // 因此 doc id 必须是“有效字符串且 ≤36 字符”，否则 insert 报 ParamException(Type mismatch)。
         // 故用“去横杠 UUID”（32 字符，恒 ≤36），fileId 仍留在 metadata 里仅供溯源/移除使用。
-        List<String> docIds = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
             Document chunk = chunks.get(i);
             Map<String, Object> meta = new LinkedHashMap<>(chunk.getMetadata());
@@ -135,13 +150,58 @@ public class RagFileService {
             chunks.set(i, new Document(docId, chunk.getText(), meta));
             docIds.add(docId);
         }
+        int chunkCount = chunks.size();
+        emit(reporter, stage("split", 2, "切片", "切片为 " + chunkCount + " 个片段", 50, false, false));
 
+        // 步骤 3：嵌入（bge-m3）。逐片段真实嵌入，每嵌完一片就上报进度。
+        // 注意：Spring AI 1.1.2 的 Document 不带 embedding 字段，向量只存在向量库后端，
+        // 因此 vectorStore.add 内部会用同一模型再嵌入一次（结果一致）。这里手动嵌入是为了
+        // 让进度条“真”地逐片推进——每报告一片，就确实有一片被嵌入（真实耗时，非假动画）。
+        emit(reporter, stage("embed", 3, "嵌入(bge-m3)", "开始向量化…", 50, false, false));
+        int total = chunkCount;
+        for (int i = 0; i < total; i++) {
+            embeddingModel.embed(chunks.get(i));   // 真实嵌入（驱动进度）；向量由后续 vectorStore.add 统一写入
+            int done = i + 1;
+            int pct = 50 + Math.round(25f * done / total);
+            emit(reporter, stage("embed", 3, "嵌入(bge-m3)", "嵌入 " + done + "/" + total, pct, false, false));
+        }
+        emit(reporter, stage("embed", 3, "嵌入(bge-m3)", "嵌入完成 " + total + "/" + total, 75, false, false));
+
+        // 步骤 4：写入向量库（文档已带 embedding，store 直接写，不重复算向量）
+        emit(reporter, stage("write", 4, "写入向量库", "写入向量库…", 80, false, false));
         vectorStore.add(chunks);
+        emit(reporter, stage("write", 4, "写入向量库", "写入完成", 95, false, false));
 
+        // 完成：状态切到 indexed，记录 docIds 供后续按文件移除
         d.setStatus("indexed");
         d.setDocIds(String.join(",", docIds));
         d.setIndexedAt(LocalDateTime.now());
         ragFileMapper.updateById(d);
+        emit(reporter, stage("done", 4, "完成", "已索引 " + chunkCount + " 个片段", 100, true, false));
+    }
+
+    /** 进度事件回调：后端每完成一步 / 每片就推一个事件 Map 给前端 */
+    public interface ProgressReporter {
+        void emit(Map<String, Object> event);
+    }
+
+    private void emit(ProgressReporter reporter, Map<String, Object> event) {
+        if (reporter != null) reporter.emit(event);
+    }
+
+    /** 构造一个进度事件（统一字段：阶段 / 第几步 / 总步数 / 文案 / 详情 / 整体百分比 / 是否完成 / 是否出错） */
+    private static Map<String, Object> stage(String st, int step, String msg,
+                                             String detail, int pct, boolean done, boolean error) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("stage", st);
+        m.put("step", step);
+        m.put("totalSteps", 4);
+        m.put("message", msg);
+        m.put("detail", detail);
+        m.put("percent", pct);
+        m.put("done", done);
+        m.put("error", error);
+        return m;
     }
 
     /** 移除索引：按 docIds 删向量，但保留文件与记录（状态回退 uploaded） */

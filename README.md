@@ -42,11 +42,11 @@
    - Rag检索接口：
      - `GET  /api/rag/stream?message=...&conversationId=xxx`（RAG 流式问答，基于知识库检索回答；每轮双写 chat_log，复用 /api/chat/conversations?type=rag、/api/chat/history 做会话列表与历史回看，与聊天页互不串门）
      - `POST /api/rag`（JSON `{ "message": "...", "conversationId": "xxx" }`，非流式 RAG 问答；演示页 http://localhost:9999/rag.html）
-   - **RAG 文件管理**（`rag.html` **右侧**「📁 文件管理」独立栏，避免挤占左侧会话/中间对话空间；支持选前预览、上传真实百分比进度、向量化进度条，手动控制是否进知识库）：
+   - **RAG 文件管理**（`rag.html` **右侧**「📁 文件管理」独立栏，避免挤占左侧会话/中间对话空间；支持选前预览、上传真实百分比进度、向量化**流式真进度**，手动控制是否进知识库）：
      - `POST /api/rag/files`（单文件上传，field `file`；落盘 + 写 `rag_file` 记录，status=uploaded）
      - `POST /api/rag/files/batch`（批量上传，field `files`）
      - `GET  /api/rag/files`（文件列表，含索引状态）
-     - `POST /api/rag/files/{id}/index`（手动向量化：解析 → 切片 → bge-m3 向量化 → 写入向量库，status=indexed）
+     - `POST /api/rag/files/{id}/index`（手动向量化，返回 `application/x-ndjson` **流式真进度**：解析 → 切片 → 逐片段 bge-m3 嵌入(percent 随真实嵌入递增) → 写入向量库 → done，status=indexed；失败推 error 事件）
      - `DELETE /api/rag/files/{id}/index`（移除索引：从向量库删该文件向量，保留文件与记录）
      - `DELETE /api/rag/files/{id}`（彻底删除：移除索引 + 删物理文件 + 删记录）
 
