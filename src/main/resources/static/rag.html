@@ -47,12 +47,59 @@
             border-radius: 8px; cursor: pointer; font-size: 15px; }
     .send:hover { background: #1f5be0; }
     .empty { color: #aaa; text-align: center; margin-top: 40px; font-size: 14px; }
+
+    /* ===== 文件管理面板 ===== */
+    .fm { border-bottom: 1px solid #eaeaea; background: #eef1f6; }
+    .fm-head { display: flex; align-items: center; justify-content: space-between;
+               padding: 10px 12px; font-size: 13px; font-weight: 600; color: #333; }
+    .fm-toggle { border: none; background: transparent; cursor: pointer; font-size: 12px; color: #185fa5; }
+    .fm-body { padding: 0 10px 10px; }
+    .fm-upload { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+    .fm-label { font-size: 12px; color: #185fa5; cursor: pointer; border: 1px dashed #b9c6e0;
+                padding: 6px 8px; border-radius: 6px; flex: 1; overflow: hidden; white-space: nowrap;
+                text-overflow: ellipsis; }
+    .fm-label input { display: none; }
+    .fm-upload-btn { border: none; background: #2b6cff; color: #fff; border-radius: 6px;
+                     padding: 6px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .fm-upload-btn:hover { background: #1f5be0; }
+    .fm-upload-btn:disabled { background: #b9c6e0; cursor: default; }
+    .file-list { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .file-item { background: #fff; border: 1px solid #e6e8ee; border-radius: 8px; padding: 8px; }
+    .file-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+    .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .file-size { color: #888; font-size: 11px; white-space: nowrap; }
+    .badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
+    .badge.uploaded { background: #fff3e0; color: #b26a00; }
+    .badge.indexed { background: #e3f6e8; color: #1a8a3c; }
+    .file-actions { display: flex; gap: 4px; margin-top: 6px; }
+    .file-actions button { border: 1px solid #d6dae3; background: #fff; border-radius: 6px;
+                            padding: 3px 8px; font-size: 11px; cursor: pointer; color: #333; }
+    .file-actions button:hover { background: #f0f3f8; }
+    .file-actions button.danger { color: #e23; border-color: #f3c2c2; }
+    .file-actions button.primary { background: #2b6cff; color: #fff; border-color: #2b6cff; }
+    .fm-hint { font-size: 11px; color: #6b7280; padding: 4px 2px 0; line-height: 1.5; }
   </style>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
       <h1>📚 知识库会话 <a class="back" href="/">← 聊天</a></h1>
+      <div class="fm">
+        <div class="fm-head">📁 文件管理
+          <button class="fm-toggle" id="fmToggle" onclick="toggleFm()">▾</button>
+        </div>
+        <div class="fm-body" id="fmBody">
+          <div class="fm-upload">
+            <label class="fm-label">＋ 选择文件（可多选）
+              <input type="file" id="fileInput" multiple
+                     accept=".md,.txt,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
+            </label>
+            <button class="fm-upload-btn" id="uploadBtn" onclick="uploadFiles()">上传</button>
+          </div>
+          <div class="fm-hint">上传后点「向量化」才进知识库；支持 PDF/Word/Excel/PPT/TXT/MD。</div>
+          <div id="fileList" class="file-list"></div>
+        </div>
+      </div>
       <button id="newBtn" onclick="newChat()">+ 新对话</button>
       <div id="convList" class="conv-list"></div>
     </aside>
@@ -194,7 +241,127 @@
 
     msg.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
 
-    // 页面加载：拉取会话列表，自动选中并还原历史
+    // ===== 文件管理 =====
+    let fmOpen = true;
+    function toggleFm() {
+      fmOpen = !fmOpen;
+      document.getElementById('fmBody').style.display = fmOpen ? 'block' : 'none';
+      document.getElementById('fmToggle').textContent = fmOpen ? '▾' : '▸';
+    }
+
+    function fmtSize(n) {
+      if (!n && n !== 0) return '';
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    async function uploadFiles() {
+      const input = document.getElementById('fileInput');
+      const files = input.files;
+      if (!files || files.length === 0) { alert('请先选择文件'); return; }
+      const btn = document.getElementById('uploadBtn');
+      btn.disabled = true; btn.textContent = '上传中…';
+      try {
+        let res;
+        if (files.length === 1) {
+          const fd = new FormData();
+          fd.append('file', files[0]);
+          res = await fetch('/api/rag/files', { method: 'POST', body: fd });
+        } else {
+          const fd = new FormData();
+          for (const f of files) fd.append('files', f);
+          res = await fetch('/api/rag/files/batch', { method: 'POST', body: fd });
+        }
+        if (!res.ok) throw new Error('上传失败: ' + res.status);
+        input.value = '';
+        await loadFiles();
+      } catch (e) {
+        alert('上传出错：' + e.message);
+      } finally {
+        btn.disabled = false; btn.textContent = '上传';
+      }
+    }
+
+    async function loadFiles() {
+      try {
+        const res = await fetch('/api/rag/files');
+        const list = await res.json();
+        renderFiles(list || []);
+      } catch (e) { /* 忽略列表加载错误 */ }
+    }
+
+    function renderFiles(list) {
+      const el = document.getElementById('fileList');
+      el.innerHTML = '';
+      if (list.length === 0) {
+        el.innerHTML = '<div class="fm-hint">还没有文件，先上传一个试试。</div>';
+        return;
+      }
+      for (const f of list) {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        const meta = document.createElement('div');
+        meta.className = 'file-meta';
+        const name = document.createElement('span');
+        name.className = 'file-name'; name.textContent = f.filename;
+        const size = document.createElement('span');
+        size.className = 'file-size'; size.textContent = fmtSize(f.size);
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + f.status;
+        badge.textContent = f.status === 'indexed' ? '已索引' : '待向量化';
+        meta.appendChild(name); meta.appendChild(size); meta.appendChild(badge);
+
+        const actions = document.createElement('div');
+        actions.className = 'file-actions';
+        if (f.status !== 'indexed') {
+          const idx = document.createElement('button');
+          idx.className = 'primary'; idx.textContent = '向量化';
+          idx.onclick = () => indexFile(f.id);
+          actions.appendChild(idx);
+        } else {
+          const rm = document.createElement('button');
+          rm.textContent = '移除索引';
+          rm.onclick = () => removeIndexFile(f.id);
+          actions.appendChild(rm);
+        }
+        const del = document.createElement('button');
+        del.className = 'danger'; del.textContent = '删除';
+        del.onclick = () => deleteFile(f.id);
+        actions.appendChild(del);
+
+        item.appendChild(meta); item.appendChild(actions);
+        el.appendChild(item);
+      }
+    }
+
+    async function indexFile(id) {
+      try {
+        const res = await fetch('/api/rag/files/' + encodeURIComponent(id) + '/index', { method: 'POST' });
+        if (!res.ok) throw new Error('向量化失败: ' + res.status);
+        await loadFiles();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function removeIndexFile(id) {
+      try {
+        const res = await fetch('/api/rag/files/' + encodeURIComponent(id) + '/index', { method: 'DELETE' });
+        if (!res.ok) throw new Error('移除失败: ' + res.status);
+        await loadFiles();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function deleteFile(id) {
+      if (!confirm('确认删除该文件及其索引？')) return;
+      try {
+        const res = await fetch('/api/rag/files/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (!res.ok) throw new Error('删除失败: ' + res.status);
+        await loadFiles();
+      } catch (e) { alert(e.message); }
+    }
+
+    // 页面加载：拉取会话列表 + 文件列表，自动选中并还原历史
+    loadFiles();
     loadConversations();
   </script>
 </body>

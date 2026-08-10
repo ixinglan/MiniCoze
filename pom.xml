@@ -113,6 +113,18 @@
             <artifactId>spring-ai-advisors-vector-store</artifactId>
         </dependency>
 
+        <!-- 阶段 3 增强：多格式文档解析（Apache Tika 一把覆盖 PDF/Word/Excel/PPT/TXT/MD） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-tika-document-reader</artifactId>
+        </dependency>
+
+        <!-- 阶段 3 增强：Milvus 向量库（核心库，手动构建 MilvusVectorStore，避免无条件连接） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-milvus-store</artifactId>
+        </dependency>
+
         <!-- 备注：阶段 3(RAG 向量化) 和 阶段 5(多模态) DeepSeek 不提供 embedding / 图片能力，
              到时再按需加回 com.alibaba.cloud.ai:spring-ai-alibaba-starter-dashscope 做 embedding / 视觉，
              并配置多模型 Bean（按 @Qualifier 区分）。本阶段先单模型跑通。 -->

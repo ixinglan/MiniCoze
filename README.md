@@ -9,6 +9,8 @@
 - Spring AI 1.1.2
 - Spring AI Alibaba 1.1.2.2（已支持 Agent Skills、Supervisor / Routing 多智能体）
 - 模型：DeepSeek V4（对话 + 视觉理解，OpenAI 兼容协议）+ Ollama 本地 bge-m3（embedding / RAG 向量化）
+- 向量库：默认内存 `SimpleVectorStore`（零依赖）；可切 **Milvus**（docker 起，生产级持久化，维度对齐 bge-m3 的 1024）
+- 文档解析：Apache Tika（`spring-ai-tika-document-reader`），一把覆盖 PDF / Word / Excel / PPT / TXT / MD
 
 ## 快速开始
 1. 获取 DeepSeek API Key：https://platform.deepseek.com/api_keys
@@ -37,11 +39,18 @@
 - `POST /api/parse/ticket`（JSON `{ "text": "..." }`，返回结构化工单 TaskTicket JSON；演示页 http://localhost:9999/ticket.html）
 - `GET  /api/rag/stream?message=...&conversationId=xxx`（RAG 流式问答，基于知识库检索回答；每轮双写 chat_log，复用 /api/chat/conversations?type=rag、/api/chat/history 做会话列表与历史回看，与聊天页互不串门）
 - `POST /api/rag`（JSON `{ "message": "...", "conversationId": "xxx" }`，非流式 RAG 问答；演示页 http://localhost:9999/rag.html）
+- **RAG 文件管理**（`rag.html` 左侧「📁 文件管理」面板，手动控制是否进知识库）：
+  - `POST /api/rag/files`（单文件上传，field `file`；落盘 + 写 `rag_file` 记录，status=uploaded）
+  - `POST /api/rag/files/batch`（批量上传，field `files`）
+  - `GET  /api/rag/files`（文件列表，含索引状态）
+  - `POST /api/rag/files/{id}/index`（手动向量化：解析 → 切片 → bge-m3 向量化 → 写入向量库，status=indexed）
+  - `DELETE /api/rag/files/{id}/index`（移除索引：从向量库删该文件向量，保留文件与记录）
+  - `DELETE /api/rag/files/{id}`（彻底删除：移除索引 + 删物理文件 + 删记录）
 
 ## 双模型骨架说明
 - **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出、图片理解（V4 原生多模态输入）。
 - **Ollama bge-m3** 提供 `EmbeddingModel`：负责文本向量化，供阶段 3 的 RAG 使用。
-- 为避免 Ollama 默认也注册 `ChatModel` 与 DeepSeek 冲突，已在 `application.yml` 中关闭 `spring.ai.ollama.chat.enabled`。
+- Ollama 的 `chat` 也已启用（注入 `ollamaChatModel`），专供**离线模式**切换为本地 LLM 生成；在线模式仍走 DeepSeek，二者通过 `@Qualifier` 区分，不冲突。
 - DeepSeek 不提供 embedding，也不支持"文生图"输出；文生图在阶段 5 再接（如通义万相 / 本地 SD）。
 
 ## 阶段 1 记忆持久化（MySQL）
@@ -67,6 +76,13 @@
 - **会话历史持久化（与 /api/chat 一致）**：`rag.html` 复用聊天页的会话侧边栏；`RagController` 在每轮问答时 `touch` 会话排序/标题 + 双写 `chat_log`。因此 RAG 对话同样支持多会话切换、历史回看、手动删除，刷新不丢。
 - **聊天 / RAG 会话隔离（type 字段）**：`conversation` 表新增 `type` 列（`chat` / `rag`，默认 `chat`），列表按 `type` 过滤，聊天页与 RAG 页互不串门。后端 `ConversationService.createConversation(type)` / `listConversations(type)` 透传；`ChatController` 的 `conversations` / `newConversation` 接收 `@RequestParam type`；`rag.html` 固定传 `?type=rag`。为兼容已存在的库，新增 `SchemaMigration`（CommandLineRunner）在启动时幂等 `ALTER TABLE` 补列并回填历史会话为 `chat`。
 
+## 阶段 3 增强：RAG 文件管理 + 向量数据库 + 离线模式
+- **文件管理（手动控制检索增强开关）**：新增 `rag_file` 表（id / filename / content_type / size / storage_path / status / doc_ids / 时间戳）。文件本体落盘到 `data/rag-files/`，元数据存库。上传只落盘（status=uploaded），**点「向量化」才切片 + bge-m3 向量化 + 写入向量库**（status=indexed），「移除索引」可回退，「删除」连文件带向量一起清。支持单文件 / 批量上传，多格式由 Tika 统一解析。
+- **多格式解析**：`TikaDocumentReader` 一把覆盖 PDF / Word / Excel / PPT / TXT / MD（按文件扩展名自动选解析器），无需为每种格式写专门代码。
+- **向量库可切换（内存 ↔ Milvus）**：`RagConfig` 的 `VectorStore` Bean 由 `rag.vectorstore.type` 控制——`memory`（默认，零依赖）或 `milvus`。业务侧（`QuestionAnswerAdvisor` / `RagService`）只依赖 `VectorStore` 抽象，切换实现零改动。Milvus 维度固定 1024 对齐 bge-m3；`docker/milvus-standalone.yml` 提供 etcd + minio + milvus 单机版一键启动。
+- **离线模式（RAG 问答可断网）**：检索增强的「嵌入（Ollama bge-m3）+ 向量库（本地）」本就本地；唯一外网依赖是「生成」用的 DeepSeek。把 `rag.offline.enabled=true` 即可让生成切到本地 Ollama LLM（如 qwen2.5 / deepseek-r1），实现**全链路离线**。取舍：本地模型更慢、质量略低，需提前 `ollama pull` 对应模型。
+- 启动仍自动索引 `classpath:rag-docs/*`（开箱即有内容可问）；用户上传文件走手动向量化，两者共存于同一向量库。
+
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
@@ -77,6 +93,9 @@
 - [x] 阶段 3：RAG 检索增强（SimpleVectorStore + QuestionAnswerAdvisor + TokenTextSplitter，启动加载 rag-docs 建索引）
 - [x] 阶段 3 扩展：RAG 会话历史持久化（RagController 双写 chat_log + rag.html 会话侧边栏，与聊天页一致）
 - [x] 阶段 3 扩展：聊天 / RAG 会话隔离（`conversation` 表加 `type` 字段，列表按 type 过滤，SchemaMigration 幂等补列兼容旧库）
+- [x] 阶段 3 增强：RAG 文件管理（`rag_file` 表 + 单/批量上传落盘 + Tika 多格式解析 + 手动向量化/移除/删除端点 + rag.html 文件面板）
+- [x] 阶段 3 增强：向量库可切换（Milvus 替换内存 SimpleVectorStore，维度 1024 对齐 bge-m3；docker/milvus-standalone.yml 一键起）
+- [x] 阶段 3 增强：离线模式（生成模型可切本地 Ollama，嵌入+向量库+生成全本地，RAG 问答可断网）
 
 ## 学习计划（每阶段 = 给产品加一块能力）
 - [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）

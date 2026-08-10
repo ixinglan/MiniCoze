@@ -1,13 +1,19 @@
 package com.ai.aiworkshop.config;
 
+import io.milvus.client.MilvusServiceClient;
+import io.milvus.param.ConnectParam;
+import io.milvus.param.IndexType;
+import io.milvus.param.MetricType;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.milvus.MilvusVectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.Resource;
 
 import java.io.IOException;
@@ -20,12 +26,15 @@ import java.util.Map;
  * 阶段 3 RAG：向量库 + 启动时文档建索引。
  *
  * 设计要点：
- * 1. 向量库用 SimpleVectorStore（Spring AI 内存实现，零额外依赖，适合演示/测试）。
- *    它底层用 Ollama 的 bge-m3（EmbeddingModel，由 spring-ai-starter-model-ollama 自动注入）做向量化。
- * 2. 应用启动时（CommandLineRunner）扫描 classpath:rag-docs/* 下的 markdown / txt，
- *    读取内容 → 构造 Document（带 source 元数据）→ TokenTextSplitter 切片 → vectorStore.add 建索引。
- *    因此每次启动会自动重建索引，重启不丢"知识"（只是重新 embedding 一次）。
- * 3. 这块和"对话记忆"完全解耦：VectorStore 存的是文档向量，ChatMemory 存的是对话历史。
+ * 1. 向量库由 {@code rag.vectorstore.type} 控制：
+ *    - memory（默认）：SimpleVectorStore 内存实现，零额外依赖，适合演示/测试；
+ *    - milvus：MilvusVectorStore（docker 起的 Milvus 单机版），生产级、可持久化、重启不丢索引。
+ *    业务侧（QuestionAnswerAdvisor / RagService）只依赖 VectorStore 抽象，切换实现零改动。
+ * 2. 向量化统一用 Ollama 的 bge-m3（EmbeddingModel，本地、无需云密钥）。维度 1024，
+ *    因此 Milvus 的 embeddingDimension 也对齐 1024（错配会导致建集合失败）。
+ * 3. 应用启动时（CommandLineRunner）扫描 classpath:rag-docs/* 的 .md/.txt 自动建索引
+ *    （保留“开箱即有内容可问”的演示种子；用户上传的文件走 RagFileController 手动向量化）。
+ * 4. 与对话记忆完全解耦：VectorStore 存文档向量，ChatMemory 存对话历史。
  */
 @Configuration
 public class RagConfig {
@@ -35,11 +44,33 @@ public class RagConfig {
     private Resource[] documents;
 
     /**
-     * 内存向量库。构造必须传 EmbeddingModel（Spring 会自动注入 Ollama 的 bge-m3）。
-     * SimpleVectorStore.builder(EmbeddingModel) 是 Spring AI 1.1.2 的标准写法。
+     * 向量库 Bean：按配置在内存 / Milvus 间切换。
+     * 用 {@code @Primary} 确保覆盖 Spring AI 自带的 SimpleVectorStore 自动配置。
+     * 默认走 memory，因此沙箱/无 Docker 环境也能直接启动跑通整条 RAG 管线。
      */
     @Bean
-    public VectorStore vectorStore(EmbeddingModel embeddingModel) {
+    @Primary
+    public VectorStore vectorStore(EmbeddingModel embeddingModel,
+                                   @Value("${rag.vectorstore.type:memory}") String type,
+                                   @Value("${rag.vectorstore.milvus.host:localhost}") String host,
+                                   @Value("${rag.vectorstore.milvus.port:19530}") int port,
+                                   @Value("${rag.vectorstore.milvus.collection:vector_store}") String collection,
+                                   @Value("${rag.vectorstore.milvus.dimension:1024}") int dimension) {
+        if ("milvus".equalsIgnoreCase(type)) {
+            // 仅当明确选择 milvus 才连接，避免无 Docker 时启动失败
+            MilvusServiceClient client = new MilvusServiceClient(
+                    ConnectParam.newBuilder()
+                            .withUri("http://" + host + ":" + port)
+                            .build());
+            return MilvusVectorStore.builder(client, embeddingModel)
+                    .collectionName(collection)
+                    .databaseName("default")
+                    .indexType(IndexType.IVF_FLAT)
+                    .metricType(MetricType.COSINE)
+                    .embeddingDimension(dimension)
+                    .initializeSchema(true)   // 首次自动建集合（Spring AI 1.x 需显式开启）
+                    .build();
+        }
         return SimpleVectorStore.builder(embeddingModel).build();
     }
 

@@ -38,3 +38,18 @@ CREATE TABLE IF NOT EXISTS chat_log (
     PRIMARY KEY (id),
     INDEX idx_cl_conv (conversation_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- RAG 文件管理表：上传记录 + 向量化状态（文件本体落盘，本表只存元数据）
+-- status: uploaded（仅上传，未向量化）/ indexed（已向量化，可参与检索增强）
+CREATE TABLE IF NOT EXISTS rag_file (
+    id           VARCHAR(64)  PRIMARY KEY,                 -- UUID，同时作为向量库文档段的 fileId 前缀
+    filename     VARCHAR(255) NOT NULL,                    -- 原始文件名（展示用）
+    content_type VARCHAR(128) DEFAULT NULL,                -- MIME 类型
+    size         BIGINT       DEFAULT 0,                   -- 文件大小（字节）
+    storage_path VARCHAR(512) NOT NULL,                    -- 落盘物理路径（含 UUID 前缀）
+    status       VARCHAR(16)  NOT NULL DEFAULT 'uploaded', -- uploaded / indexed
+    doc_ids      TEXT,                                     -- 该文件切片在向量库的文档 ID（逗号分隔），用于按文件移除索引
+    created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    indexed_at   TIMESTAMP    DEFAULT NULL,
+    INDEX idx_rf_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -46,6 +46,31 @@ public class SchemaMigration implements CommandLineRunner {
                     backfill.execute("UPDATE conversation SET type = 'chat' WHERE type IS NULL OR type = ''");
                 }
             }
+
+            // 幂等建表：rag_file（RAG 文件管理）。全新库由 schema.sql 建好；已存在库靠这里兜底。
+            boolean hasRagFile;
+            try (Statement check2 = conn.createStatement();
+                 ResultSet rs2 = check2.executeQuery(
+                         "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                         + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'rag_file'")) {
+                hasRagFile = rs2.next() && rs2.getInt(1) > 0;
+            }
+            if (!hasRagFile) {
+                try (Statement create = conn.createStatement()) {
+                    create.execute("CREATE TABLE IF NOT EXISTS rag_file ("
+                            + "id VARCHAR(64) PRIMARY KEY, "
+                            + "filename VARCHAR(255) NOT NULL, "
+                            + "content_type VARCHAR(128) DEFAULT NULL, "
+                            + "size BIGINT DEFAULT 0, "
+                            + "storage_path VARCHAR(512) NOT NULL, "
+                            + "status VARCHAR(16) NOT NULL DEFAULT 'uploaded', "
+                            + "doc_ids TEXT, "
+                            + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                            + "indexed_at TIMESTAMP DEFAULT NULL, "
+                            + "INDEX idx_rf_status (status)"
+                            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                }
+            }
         }
     }
 }

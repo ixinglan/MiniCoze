@@ -11,6 +11,7 @@ import com.ai.aiworkshop.repository.MysqlChatMemoryRepository;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -38,9 +39,13 @@ public class ChatClientConfig {
      * 业务代码完全不用关心记忆的存取，只管 conversationId 即可。
      */
     @Bean
-    public ChatClient chatClient(@Qualifier("deepSeekChatModel") ChatModel chatModel,
-                                 ChatMemory chatMemory) {
-        return ChatClient.builder(chatModel)
+    public ChatClient chatClient(@Qualifier("deepSeekChatModel") ChatModel deepSeek,
+                                 @Qualifier("ollamaChatModel") ChatModel ollama,
+                                 ChatMemory chatMemory,
+                                 @Value("${rag.offline.enabled:false}") boolean offline) {
+        // 离线模式：生成改用本地 Ollama LLM（嵌入/向量库本就本地），实现全链路离线可用
+        ChatModel gen = offline ? ollama : deepSeek;
+        return ChatClient.builder(gen)
                 .defaultSystem("你是一个友好、专业的 AI 助手，使用简体中文回答。")
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
@@ -69,16 +74,20 @@ public class ChatClientConfig {
      * 检索增强 + 记忆 叠加，得到"既懂你的私有资料、又记得上下文"的助手。
      */
     @Bean
-    public ChatClient ragClient(@Qualifier("deepSeekChatModel") ChatModel chatModel,
+    public ChatClient ragClient(@Qualifier("deepSeekChatModel") ChatModel deepSeek,
+                               @Qualifier("ollamaChatModel") ChatModel ollama,
                                ChatMemory chatMemory,
-                               VectorStore vectorStore) {
+                               VectorStore vectorStore,
+                               @Value("${rag.offline.enabled:false}") boolean offline) {
+        // 离线模式：生成改用本地 Ollama LLM；检索增强（向量库）与向量化（Ollama bge-m3）本就本地
+        ChatModel gen = offline ? ollama : deepSeek;
         QuestionAnswerAdvisor qaAdvisor = QuestionAnswerAdvisor.builder(vectorStore)
                 .searchRequest(SearchRequest.builder()
                         .similarityThreshold(0.6)   // 低于该相似度的片段不注入，避免噪声
                         .topK(4)                    // 每次最多取 4 个最相关片段
                         .build())
                 .build();
-        return ChatClient.builder(chatModel)
+        return ChatClient.builder(gen)
                 .defaultSystem("你是一个基于知识库回答的 AI 助手。请仅依据提供的资料回答，"
                         + "若资料中没有相关信息，请如实说明'资料中未提及'，不要编造。使用简体中文。")
                 .defaultAdvisors(qaAdvisor, MessageChatMemoryAdvisor.builder(chatMemory).build())

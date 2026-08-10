@@ -25,12 +25,14 @@ spring:
         options:
           model: deepseek-v4-flash   # 或 deepseek-v4-pro（更强/更贵）；V4 原生支持图片输入
 
-    # ===== 模型 2：Ollama 本地 embedding（阶段 3 RAG 向量化用）=====
-    # 只启用 embedding，关闭 chat，避免和 DeepSeek 的 ChatModel 注入冲突
+    # ===== 模型 2：Ollama 本地（阶段 3 RAG 向量化 + 离线模式生成）=====
+    # embedding 始终启用（bge-m3 负责向量化）；chat 保持启用以便离线模式切换为本地 LLM
     ollama:
       base-url: http://localhost:11434
       chat:
-        enabled: false
+        enabled: true     # 启用后注入 ollamaChatModel Bean；在线模式不使用它，离线模式才切到它
+        options:
+          model: ${RAG_OFFLINE_MODEL:qwen2.5:1.5b}   # 离线生成用本地模型，按需改成 deepseek-r1 / llama3.1 等
       embedding:
         enabled: true
         options:
@@ -38,6 +40,20 @@ spring:
 
 server:
   port: 9999
+
+# ===== RAG 文件管理 / 向量库 / 离线模式配置 =====
+rag:
+  storage:
+    dir: ./data/rag-files        # 上传文件落盘目录（元数据在 rag_file 表，文件本体在此）
+  vectorstore:
+    type: milvus                 # memory（默认，零依赖）| milvus（docker 起 Milvus 后切换）
+    milvus:
+      host: localhost
+      port: 19530
+      collection: vector_store   # Milvus 集合名（首次自动创建）
+      dimension: 1024            # 必须对齐 bge-m3 的向量维度，错配会导致建集合失败
+  offline:
+    enabled: false              # true 时生成改用本地 Ollama LLM，实现完全离线问答
 
 logging:
   level:
