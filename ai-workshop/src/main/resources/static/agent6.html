@@ -84,6 +84,7 @@
     <button class="tab" data-mode="routing">Routing</button>
     <button class="tab" data-mode="workflow">意图路由图</button>
     <button class="tab" data-mode="supervisor">Supervisor</button>
+    <button class="tab" data-mode="mcp">MCP 工具</button>
   </div>
 
   <!-- ReactAgent -->
@@ -220,6 +221,29 @@
       <div class="trace" id="supervisor-trace"></div>
     </div>
   </section>
+
+  <!-- 阶段 7 MCP 工具 -->
+  <section class="panel" data-mode="mcp">
+    <div class="card">
+      <h2>🔌 MCP 远程工具（阶段 7）</h2>
+      <p class="sub">来自 Python MCP Server（stdio 传输 · 4 个工具）+ Nacos MCP Server（SSE 传输 · 4 个工具）。
+      模型能像调用本地 @Tool 一样透明地调用这些远程工具。</p>
+      <div style="margin:10px 0;">
+        <button class="ghost" onclick="loadMcpTools()">🔄 刷新工具列表</button>
+        <span id="mcp-tool-count" style="font-size:12px;color:var(--muted);margin-left:10px;"></span>
+      </div>
+      <div id="mcp-tool-list" style="font-size:13px;line-height:1.7;margin-bottom:12px;color:var(--muted);">
+        点击上方按钮加载工具列表…
+      </div>
+      <textarea id="mcp-input" placeholder="试试问：现在几点？北京天气？帮我算 1567*893？查一下 MCP 协议的知识…">现在几点？北京天气怎么样？</textarea>
+      <div class="row">
+        <button class="go" onclick="runMcp()">MCP 对话</button>
+        <button class="ghost" onclick="fill('mcp-input','生成 3 个 UUID，统计一下这段文本的字数：Spring AI 是 Java 生态的 AI 集成框架')">示例2</button>
+      </div>
+      <div class="result" id="mcp-output"></div>
+      <p class="hint">💡 若 MCP 工具不可用，请确认：① Python MCP Server 依赖已安装（pip install mcp）② Nacos MCP Server 已启动并注册到 Nacos</p>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -282,6 +306,54 @@
   function toggleDiag(id){
     const el = document.getElementById(id);
     el.classList.toggle('show');
+  }
+
+  // ===== 阶段 7 MCP 工具 =====
+
+  function loadMcpTools() {
+    const list = document.getElementById('mcp-tool-list');
+    const count = document.getElementById('mcp-tool-count');
+    list.innerHTML = '⏳ 加载中…';
+    fetch('/api/agent6/mcp/tools')
+      .then(r => r.json())
+      .then(d => {
+        count.textContent = '共 ' + d.total + ' 个工具';
+        if (!d.tools || d.tools.length === 0) {
+          list.innerHTML = '<span class="err">未发现 MCP 工具。请确认 Python MCP Server 和 Nacos MCP Server 已启动。</span>';
+          return;
+        }
+        let html = '';
+        d.tools.forEach(t => {
+          html += '<div class="call"><b>' + escapeHtml(t.name) + '</b><br>' + escapeHtml(t.description || '') + '</div>';
+        });
+        list.innerHTML = html;
+      })
+      .catch(e => { list.innerHTML = '<span class="err">加载失败：' + e + '</span>'; });
+  }
+
+  function runMcp() {
+    const input = document.getElementById('mcp-input').value;
+    const out = document.getElementById('mcp-output');
+    out.textContent = '⏳ MCP 对话中（可能调用远程工具）…';
+    fetch('/api/agent6/mcp/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: input })
+    })
+    .then(r => r.json())
+    .then(d => {
+      out.textContent = d.error ? '' : (d.result || '');
+      if (d.error) out.innerHTML = '<span class="err">' + d.error + '</span>';
+    })
+    .catch(e => { out.innerHTML = '<span class="err">请求失败：' + e + '</span>'; });
+  }
+
+  // 切换到 MCP tab 时自动加载工具列表
+  const mcpTab = document.querySelector('.tab[data-mode="mcp"]');
+  if (mcpTab) {
+    mcpTab.addEventListener('click', () => {
+      setTimeout(loadMcpTools, 100);  // 等 DOM 切换完再加载
+    });
   }
 </script>
 </body>

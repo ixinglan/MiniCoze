@@ -1,0 +1,21 @@
+# Nacos Standalone（单机模式，内嵌 Derby 数据库）
+# 用途：为 Nacos MCP Client 提供服务注册与发现能力
+# 启动：docker compose -f docker/nacos-standalone.yml up -d
+# 访问：http://localhost:8848/nacos （用户名/密码：nacos/nacos）
+
+version: "3.8"
+
+services:
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: nacos-standalone
+    environment:
+      - MODE=standalone             # 单机模式（无需集群）
+      - PREFER_HOST_MODE=hostname   # 使用 hostname 注册，便于容器间通信
+      - NACOS_AUTH_ENABLE=true      # 开启认证
+    ports:
+      - "8848:8848"                 # Nacos HTTP 主端口
+      - "9848:9848"                 # gRPC 端口（Nacos 2.x 客户端通信）
+    volumes:
+      - ./nacos-data:/home/nacos/data  # 持久化配置和服务注册信息
+    restart: unless-stopped

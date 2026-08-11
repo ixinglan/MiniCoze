@@ -6,8 +6,11 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.agent.flow.agent.LlmRoutingAgent;
 import com.alibaba.cloud.ai.graph.agent.flow.agent.SequentialAgent;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 阶段 6 控制器：Agent 编排演示。
@@ -43,18 +47,26 @@ public class Agent6Controller {
     private final CompiledGraph supervisorGraph;
     private final ToolCallRecorder recorder;
 
+    // 阶段 7 MCP
+    private final ChatClient mcpChatClient;
+    private final List<ToolCallback> mcpToolCallbacks;
+
     public Agent6Controller(ReactAgent reactAgent,
                             SequentialAgent sequentialAgent,
                             LlmRoutingAgent routingAgent,
                             @Qualifier("intentRoutingGraph") CompiledGraph intentRoutingGraph,
                             @Qualifier("supervisorGraph") CompiledGraph supervisorGraph,
-                            ToolCallRecorder recorder) {
+                            ToolCallRecorder recorder,
+                            @Qualifier("mcpChatClient") ChatClient mcpChatClient,
+                            @Qualifier("mcpToolCallbacks") List<ToolCallback> mcpToolCallbacks) {
         this.reactAgent = reactAgent;
         this.sequentialAgent = sequentialAgent;
         this.routingAgent = routingAgent;
         this.intentRoutingGraph = intentRoutingGraph;
         this.supervisorGraph = supervisorGraph;
         this.recorder = recorder;
+        this.mcpChatClient = mcpChatClient;
+        this.mcpToolCallbacks = mcpToolCallbacks != null ? mcpToolCallbacks : List.of();
     }
 
     /** ReactAgent：单 Agent 自带工具循环。用 ToolCallRecorder 收集模型发起的工具调用明细。 */
@@ -170,5 +182,41 @@ public class Agent6Controller {
     private String extractLastMessage(Optional<OverAllState> stateOpt) {
         List<String> msgs = extractMessages(stateOpt);
         return msgs.isEmpty() ? "(无输出)" : msgs.get(msgs.size() - 1);
+    }
+
+    // ===== 阶段 7 MCP 工具端点 =====
+
+    /** 列出所有 MCP 工具（Python stdio + Nacos SSE 合并） */
+    @GetMapping("/mcp/tools")
+    public Map<String, Object> mcpTools() {
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("total", mcpToolCallbacks.size());
+        res.put("tools", mcpToolCallbacks.stream().map(tc -> {
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("name", tc.getToolDefinition().name());
+            info.put("description", tc.getToolDefinition().description());
+            return info;
+        }).collect(Collectors.toList()));
+        return res;
+    }
+
+    /** 使用 MCP 工具对话：模型能调用 Python MCP Server + Nacos MCP Server 的远程工具 */
+    @PostMapping("/mcp/chat")
+    public Map<String, Object> mcpChat(@RequestBody Map<String, String> body) {
+        String query = body.getOrDefault("query", "");
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("mode", "MCP 工具对话（Python stdio + Nacos SSE）");
+        res.put("totalTools", mcpToolCallbacks.size());
+        try {
+            String result = mcpChatClient.prompt()
+                    .user(query)
+                    .call()
+                    .content();
+            res.put("result", result);
+        } catch (Exception e) {
+            res.put("error", "MCP 调用失败：" + e.getMessage());
+            res.put("result", "");
+        }
+        return res;
     }
 }

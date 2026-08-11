@@ -12,10 +12,17 @@
     </parent>
 
     <groupId>com.ai</groupId>
-    <artifactId>ai-workshop</artifactId>
+    <artifactId>ai-workshop-parent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ai-workshop</name>
-    <description>综合知识库 + Agent 工作台</description>
+    <packaging>pom</packaging>
+    <name>AI Workshop Parent</name>
+    <description>综合知识库 + Agent 工作台（多模块父 POM）</description>
+
+    <!-- ===== 子模块列表 ===== -->
+    <modules>
+        <module>ai-workshop</module>
+        <module>mcp-nacos-server</module>
+    </modules>
 
     <properties>
         <java.version>17</java.version>
@@ -26,6 +33,7 @@
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
     </properties>
 
+    <!-- ===== BOM 统一版本管理（子模块继承，无需重复声明） ===== -->
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -49,6 +57,18 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- 强阶段 7：nacos-mcp-client 不在 SAA/BOM 管理范围，需显式声明版本 -->
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-starter-nacos-mcp-client</artifactId>
+                <version>1.0.0.2</version>
+            </dependency>
+            <!-- 强阶段 7：Nacos Discovery（SCA 2025.0.0.0 适配 Boot 3.5.x，含 Nacos 3.0.3） -->
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+                <version>2025.0.0.0</version>
+            </dependency>
             <!-- 强制 mybatis-spring 版本：mybatis-plus-boot-starter 默认锁了 2.1.2（Spring 5 时代），
                  而 Spring Boot 3.5 用 Spring 6.2，要求 factoryBeanObjectType 为 Class 类型，
                  2.1.2 写入的是 String 会导致 Mapper 注册失败。3.0.x 已适配 Spring 6.2。 -->
@@ -60,111 +80,8 @@
         </dependencies>
     </dependencyManagement>
 
+    <!-- ===== 所有子模块共享的基础依赖 ===== -->
     <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <!-- 模型 1：DeepSeek V4 适配（Spring AI 官方原生支持，OpenAI 兼容协议） -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-deepseek</artifactId>
-        </dependency>
-
-        <!-- 模型 2：Ollama 本地 embedding（阶段 3 RAG 向量化用，免费、无需云密钥）
-             仅启用 embedding，chat 已在 application.yml 关闭，避免与 DeepSeek 的 ChatModel 冲突 -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-ollama</artifactId>
-        </dependency>
-
-        <!-- 阶段 1 显式引入（此前由 starter 传递依赖）：
-             spring-ai-model 提供 ChatMemory / MessageWindowChatMemory；
-             spring-ai-client-chat 提供 ChatClient / MessageChatMemoryAdvisor。 -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-model</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-client-chat</artifactId>
-        </dependency>
-
-        <!-- 阶段 1 MySQL 持久化记忆：MyBatis-Plus（取代原生 JdbcTemplate）+ MySQL 驱动 -->
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-boot-starter</artifactId>
-            <version>${mybatis-plus.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- 阶段 3 RAG：向量库核心 + 检索增强 Advisor（QuestionAnswerAdvisor）+ 文档读取（Tika 通用，支持 md/pdf/txt/docx） -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-vector-store</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-advisors-vector-store</artifactId>
-        </dependency>
-
-        <!-- 阶段 3 增强：多格式文档解析（Apache Tika 一把覆盖 PDF/Word/Excel/PPT/TXT/MD） -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-tika-document-reader</artifactId>
-        </dependency>
-
-        <!-- 阶段 3 增强：Milvus 向量库（核心库，手动构建 MilvusVectorStore，避免无条件连接） -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-milvus-store</artifactId>
-        </dependency>
-
-        <!-- 阶段 5 多模态：文生图（通义万相 Wanx）。DashScope 自动配置会注入
-             DashScopeImageModel（实现 Spring AI 的 ImageModel 接口），与现有 DeepSeek/Ollama 的
-             ChatModel Bean 互不冲突。图片理解仍走 DeepSeek V4 flash（传 Media），无需本 starter。 -->
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
-        </dependency>
-
-        <!-- 阶段 6 Agent 编排：
-             - agent-framework：高层 Agent 模式（ReactAgent / SequentialAgent / SupervisorAgent / LlmRoutingAgent）
-             - graph-core：低层图编排（StateGraph / Node / Edge / OverAllState），Java 版 LangGraph
-             两者均在主 BOM（spring-ai-alibaba-bom 1.1.2.2）管理下，无需写 version；若编译提示缺 version 再补。 -->
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-agent-framework</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-graph-core</artifactId>
-        </dependency>
-
-        <!-- 阶段 7/8 后续按需开启：
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-document-reader-markdown</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-document-reader-pdf</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-nacos-mcp-client</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
-        </dependency>
-        -->
-
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -178,11 +95,13 @@
     </dependencies>
 
     <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 </project>

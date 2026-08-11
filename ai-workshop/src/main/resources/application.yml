@@ -67,6 +67,29 @@ spring:
           model: wanx2.0-t2i-turbo        # 通义万相；可选 wanx2.0-t2i-turbo（更快/更便宜）
           size: 1024*1024       # 输出分辨率
 
+    # ===== 阶段 7 MCP Client 配置（两路并行）=====
+    # stdio：启动 Python MCP Server 进程，通过标准输入/输出通信
+    # nacos：通过 Nacos 服务发现自动找到 Nacos MCP Server 的 SSE 端点
+    mcp:
+      client:
+        enabled: true
+        name: ai-workshop-mcp-client
+        version: 1.0.0
+        type: async                   # 异步模式（支持 SSE/stdio 并发）
+        # ---- stdio 连接：Python MCP Server ----
+        stdio:
+          connections:
+            python-server:
+              command: ${MCP_PYTHON_PATH:/Users/ixiaoqiang/.workbuddy/binaries/python/envs/default/bin/python3}
+              args:
+                - ${MCP_PYTHON_SERVER:/Users/ixiaoqiang/WorkBuddy/springAi/mcp-servers/python-server/server.py}
+    # ---- Nacos MCP 服务发现 ----
+    alibaba:
+      nacos:
+        mcp:
+          enabled: true
+          server-addr: ${NACOS_ADDR:localhost:8848}
+
 server:
   port: 9999
 
@@ -89,3 +112,4 @@ rag:
 logging:
   level:
     org.springframework.ai: INFO
+

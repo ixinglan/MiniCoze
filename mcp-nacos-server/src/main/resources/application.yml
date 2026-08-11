@@ -1,0 +1,26 @@
+server:
+  port: 9988   # 独立端口，不和主应用 9999 冲突
+
+spring:
+  application:
+    name: mcp-nacos-server   # Nacos 注册的服务名，主应用通过此名称发现
+
+  # ===== Nacos 服务发现 =====
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848    # Nacos 服务端地址
+        namespace:                     # 命名空间（public 留空即可）
+        enabled: true
+
+  ai:
+    mcp:
+      server:
+        type: async          # 异步模式（SSE 传输）
+        name: nacos-mcp-server
+        version: 1.0.0
+
+logging:
+  level:
+    org.springframework.ai.mcp: DEBUG
+    com.alibaba.cloud.nacos: INFO

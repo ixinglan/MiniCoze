@@ -21,10 +21,13 @@ import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,15 +66,22 @@ public class Agent6Config {
     // 编排主力模型：DeepSeek V4
     private final ChatModel deepSeek;
 
+    // MCP 远程工具（阶段 7）：来自 Python stdio MCP Server + Nacos MCP Server。
+    // @Lazy + 非强制注入：MCP 未配置/未连接时为空列表，不影响核心 Agent 功能。
+    @Lazy
+    private final List<ToolCallback> mcpTools;
+
     public Agent6Config(@Qualifier("deepSeekChatModel") ChatModel deepSeek,
                         DateTimeTool dateTimeTool, CalculatorTool calculatorTool,
-                        WeatherTool weatherTool, RagQueryTool ragQueryTool, CreateTaskTool createTaskTool) {
+                        WeatherTool weatherTool, RagQueryTool ragQueryTool, CreateTaskTool createTaskTool,
+                        @Lazy List<ToolCallback> mcpTools) {
         this.deepSeek = deepSeek;
         this.dateTimeTool = dateTimeTool;
         this.calculatorTool = calculatorTool;
         this.weatherTool = weatherTool;
         this.ragQueryTool = ragQueryTool;
         this.createTaskTool = createTaskTool;
+        this.mcpTools = mcpTools != null ? mcpTools : List.of();
     }
 
     /**
@@ -81,6 +91,23 @@ public class Agent6Config {
     @Bean
     public ChatClient orchestrationClient() {
         return ChatClient.builder(deepSeek).build();
+    }
+
+    /**
+     * 阶段 7 MCP 工具专用 ChatClient：注入所有 MCP ToolCallback（Python stdio + Nacos SSE），
+     * 让 Agent 能无缝调用远程 MCP 工具，就像调用本地 @Tool 方法一样。
+     * <p>
+     * 注意：这里用 {@code defaultTools(ToolCallback...)} 而非 {@code defaultTools(Object...)}，
+     * 因为 MCP 工具以 ToolCallback 接口实例注入，不走 @Tool 注解扫描。
+     * </p>
+     */
+    @Bean
+    public ChatClient mcpChatClient(@Qualifier("deepSeekChatModel") ChatModel deepSeek) {
+        var builder = ChatClient.builder(deepSeek);
+        if (!mcpTools.isEmpty()) {
+            builder.defaultTools(mcpTools.toArray(new ToolCallback[0]));
+        }
+        return builder.build();
     }
 
     /**
