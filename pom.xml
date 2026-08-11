@@ -133,7 +133,10 @@
             <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
         </dependency>
 
-        <!-- 后续阶段按需开启（已加入 BOM，无需写 version）：
+        <!-- 阶段 6 Agent 编排：
+             - agent-framework：高层 Agent 模式（ReactAgent / SequentialAgent / SupervisorAgent / LlmRoutingAgent）
+             - graph-core：低层图编排（StateGraph / Node / Edge / OverAllState），Java 版 LangGraph
+             两者均在主 BOM（spring-ai-alibaba-bom 1.1.2.2）管理下，无需写 version；若编译提示缺 version 再补。 -->
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-agent-framework</artifactId>
@@ -142,6 +145,8 @@
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-graph-core</artifactId>
         </dependency>
+
+        <!-- 阶段 7/8 后续按需开启：
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-starter-document-reader-markdown</artifactId>

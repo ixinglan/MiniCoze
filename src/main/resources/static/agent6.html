@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 编排 · 阶段 6</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --line:#e3e8ef; --primary:#3b6cff; --tool:#7c4dff; --text:#1f2733; --muted:#8a94a6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+         background:var(--bg); color:var(--text); }
+  nav { display: flex; gap: 6px; align-items: center; padding: 12px 20px; background: var(--card);
+        border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  nav a { text-decoration: none; color: var(--muted); font-size: 13px; padding: 6px 12px; border-radius: 8px; }
+  nav a:hover { background: var(--bg); color: var(--text); }
+  nav a.active { background: #eaf0ff; color: var(--primary); font-weight: 600; }
+  nav .brand { font-weight: 700; color: var(--text); margin-right: 8px; font-size: 15px; }
+  .app { max-width: 920px; margin: 0 auto; padding: 24px 16px 60px; }
+  header h1 { font-size: 20px; margin: 0 0 4px; }
+  header p { color: var(--muted); font-size: 13px; margin: 0 0 18px; line-height: 1.6; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tab { padding: 8px 14px; border: 1px solid var(--line); background: var(--card); border-radius: 10px;
+         font-size: 13px; cursor: pointer; color: var(--muted); }
+  .tab:hover { border-color: var(--primary); color: var(--primary); }
+  .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .card h2 { font-size: 15px; margin: 0 0 4px; }
+  .card .sub { color: var(--muted); font-size: 12px; margin: 0 0 14px; line-height: 1.5; }
+  label { font-size: 12px; color: var(--muted); display: block; margin: 10px 0 4px; }
+  textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+        font-size: 14px; outline: none; font-family: inherit; resize: vertical; min-height: 70px; }
+  textarea:focus { border-color: var(--primary); }
+  .row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+  button.go { padding: 10px 18px; border: none; border-radius: 10px; background: var(--primary); color: #fff;
+        font-size: 14px; cursor: pointer; }
+  button.go:hover { filter: brightness(1.05); }
+  button.go:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: #fff; color: var(--tool); border: 1px solid var(--tool); padding: 8px 14px;
+        border-radius: 10px; font-size: 13px; cursor: pointer; }
+  .result { margin-top: 14px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+        border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fafbfc; min-height: 20px; }
+  .result:empty::before { content: "结果将显示在这里…"; color: var(--muted); }
+  .err { color: #e5484d; }
+  .trace { margin-top: 14px; }
+  .trace-title { font-size: 12px; font-weight: 600; color: var(--tool); margin: 10px 0 6px; }
+  .call { font-size: 12px; background: #f3f0ff; border: 1px solid #e6ddff; border-radius: 8px; padding: 8px 10px;
+        margin-bottom: 6px; line-height: 1.5; word-break: break-word; }
+  .call b { color: var(--tool); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">🤖 AI Workshop</span>
+  <a href="/index.html">聊天</a>
+  <a href="/rag.html">知识库</a>
+  <a href="/agent.html">Agent</a>
+  <a href="/multimodal.html">多模态</a>
+  <a href="/agent6.html" class="active">Agent编排</a>
+</nav>
+
+<div class="app">
+  <header>
+    <h1>🕸️ 阶段 6 · Agent 编排</h1>
+    <p>从“一个能调工具的 Agent”升级到“多个 Agent 协作 + 图编排”。五种形态：单 Agent 工具循环、顺序、路由、手写意图路由图、手写监督者多智能体。
+       主力模型：<b>DeepSeek V4</b>（若 Supervisor 嵌套调用不稳，可切 qwen）。</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-mode="react">ReactAgent</button>
+    <button class="tab" data-mode="sequential">Sequential</button>
+    <button class="tab" data-mode="routing">Routing</button>
+    <button class="tab" data-mode="workflow">意图路由图</button>
+    <button class="tab" data-mode="supervisor">Supervisor</button>
+  </div>
+
+  <!-- ReactAgent -->
+  <section class="panel active" data-mode="react">
+    <div class="card">
+      <h2>ReactAgent · 单 Agent 工具循环</h2>
+      <p class="sub">一个 Agent 自己决定调哪些工具、调几次，直到任务完成（底层在 Agent 和 Tool 之间循环）。</p>
+      <textarea id="react-input">帮我算一下 (23+19)*4 等于多少，并告诉我现在几点</textarea>
+      <div class="row">
+        <button class="go" onclick="run('react')">运行</button>
+        <button class="ghost" onclick="fill('react-input','查一下北京天气，并创建一个工单：主题是测试')">示例2</button>
+      </div>
+      <div class="result" id="react-output"></div>
+      <div class="trace" id="react-trace"></div>
+    </div>
+  </section>
+
+  <!-- SequentialAgent -->
+  <section class="panel" data-mode="sequential">
+    <div class="card">
+      <h2>SequentialAgent · 顺序编排</h2>
+      <p class="sub">子 Agent 按顺序串执行：前一个的输出自动喂给后一个（写作 → 评审）。</p>
+      <textarea id="sequential-input">写一段关于「专注力」的 100 字短文，然后评审它的优缺点</textarea>
+      <div class="row"><button class="go" onclick="run('sequential')">运行</button></div>
+      <div class="result" id="sequential-output"></div>
+      <div class="trace" id="sequential-trace"></div>
+    </div>
+  </section>
+
+  <!-- LlmRoutingAgent -->
+  <section class="panel" data-mode="routing">
+    <div class="card">
+      <h2>LlmRoutingAgent · 路由分发</h2>
+      <p class="sub">LLM 判断问题类型后，单次分发给最合适的研究 / 编程 / 写作助手（不循环）。</p>
+      <textarea id="routing-input">用 Python 写一个快速排序函数并解释思路</textarea>
+      <div class="row"><button class="go" onclick="run('routing')">运行</button></div>
+      <div class="result" id="routing-output"></div>
+      <div class="trace" id="routing-trace"></div>
+    </div>
+  </section>
+
+  <!-- graph-core 意图路由工作流 -->
+  <section class="panel" data-mode="workflow">
+    <div class="card">
+      <h2>graph-core 手写 · 意图路由工作流</h2>
+      <p class="sub">用 StateGraph 手写最小图：分类节点 → 条件边 → 对应 worker。理解“图编排”原理的入门示例。</p>
+      <textarea id="workflow-input">研究对比 Rust 和 Go 的并发模型差异</textarea>
+      <div class="row"><button class="go" onclick="run('workflow')">运行</button></div>
+      <div class="result" id="workflow-output"></div>
+      <div class="trace" id="workflow-trace"></div>
+    </div>
+  </section>
+
+  <!-- graph-core Supervisor 多智能体 -->
+  <section class="panel" data-mode="supervisor">
+    <div class="card">
+      <h2>graph-core 手写 · Supervisor 多智能体</h2>
+      <p class="sub">监督者节点循环决定调用研究员 / 程序员，直到判定 FINISH。演示“多智能体协作”本质就是一张图。</p>
+      <textarea id="supervisor-input">先调研一下向量数据库的常见选型，再写一段调用示例</textarea>
+      <div class="row"><button class="go" onclick="run('supervisor')">运行</button></div>
+      <div class="result" id="supervisor-output"></div>
+      <div class="trace" id="supervisor-trace"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+  function fill(id, text){ document.getElementById(id).value = text; }
+
+  function run(mode){
+    const input = document.getElementById(mode + '-input').value;
+    const out = document.getElementById(mode + '-output');
+    const trace = document.getElementById(mode + '-trace');
+    out.textContent = '⏳ 执行中（多 Agent / 多步，可能较慢）...';
+    trace.innerHTML = '';
+    fetch('/api/agent6/' + mode, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: input })
+    })
+    .then(r => r.json())
+    .then(d => {
+      out.textContent = d.error ? '' : (d.result || '');
+      if (d.error) out.innerHTML = '<span class="err">' + d.error + '</span>';
+      renderTrace(trace, d);
+    })
+    .catch(e => { out.innerHTML = '<span class="err">请求失败：' + e + '</span>'; });
+  }
+
+  function renderTrace(el, d){
+    let html = '';
+    if (d.toolCalls && d.toolCalls.length){
+      html += '<div class="trace-title">🔧 工具调用 (' + d.toolCalls.length + ')</div>';
+      d.toolCalls.forEach(t => {
+        html += '<div class="call"><b>' + escapeHtml(t.name) + '</b> ' + escapeHtml(JSON.stringify(t.params)) + '</div>';
+      });
+    }
+    if (d.route){
+      html += '<div class="trace-title">🧭 意图分类：' + escapeHtml(d.route) + '</div>';
+    }
+    if (d.trace && d.trace.length){
+      html += '<div class="trace-title">🪜 执行轨迹 (' + d.trace.length + ')</div>';
+      d.trace.forEach((m, i) => { html += '<div class="call">#' + (i+1) + ' ' + escapeHtml(m) + '</div>'; });
+    }
+    el.innerHTML = html;
+  }
+
+  function escapeHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // tab 切换
+  document.querySelectorAll('.tab').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      document.querySelector('.panel[data-mode="' + b.dataset.mode + '"]').classList.add('active');
+    };
+  });
+</script>
+</body>
+</html>

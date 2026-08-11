@@ -58,6 +58,12 @@
    - **多模态**（阶段 5，`multimodal.html`）：
      - `POST /api/multimodal/describe`（multipart `image` + `question`，图片理解，走 qwen-vl-max，返回 `{ answer }`）
      - `POST /api/multimodal/generate`（JSON `{ "prompt": "..." }`，文生图走通义万相 Wanx，返回 `{ image: "data:image/png;base64,...", url }`）
+   - **Agent 编排**（阶段 6，`agent6.html`）：
+     - `POST /api/agent6/react`（JSON `{ "query": "..." }`，ReactAgent 单 Agent 工具循环，返回 `{ mode, result, toolCalls }`）
+     - `POST /api/agent6/sequential`（SequentialAgent 顺序：写作→评审，返回 `{ mode, result, trace }`）
+     - `POST /api/agent6/routing`（LlmRoutingAgent 单次路由分发，返回 `{ mode, result, trace }`）
+     - `POST /api/agent6/workflow`（graph-core 手写意图路由工作流，返回 `{ mode, route, result }`）
+     - `POST /api/agent6/supervisor`（graph-core 手写 Supervisor 多智能体循环路由，返回 `{ mode, result }`）
 
 ## 多模型骨架说明
 - **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出（纯文本；其公开 API 不支持图片输入）。
@@ -114,6 +120,20 @@
 - 端点 `POST /api/multimodal/describe` + `POST /api/multimodal/generate` + 演示页 `multimodal.html`（双模块：图片理解上传预览 + 文生图 prompt 生成）。
 - 详见 `docs/阶段5-知识点总结.md`。
 
+## 阶段 6 Agent 编排（graph-core + agent-framework）
+- 目标：从"一个能调工具的 Agent"升级到"多个 Agent 协作 + 图编排"——把复杂任务拆成可调度、可视化的工作流。
+- 两层能力（SAA 1.1.2.2）：低层 `graph-core`（Java 版 LangGraph：StateGraph + Node + Edge + OverAllState + KeyStrategy）用于手写任意图；高层 `agent-framework` 提供开箱即用的 `ReactAgent` / `SequentialAgent` / `LlmRoutingAgent`。
+- 新增依赖 `spring-ai-alibaba-graph-core` + `spring-ai-alibaba-agent-framework`（主 BOM 管理免 version）；编排主力模型用 **DeepSeek V4**（用户选择；若 Supervisor 嵌套 tool-calling 不稳可切 qwen）。
+- 五种编排形态（均演示于 `agent6.html`，tab 切换）：
+  1. **ReactAgent**（单 Agent 工具循环）：`ReactAgent.builder().methodTools(阶段4的5个@Tool).build()`，模型在 Agent 与 Tool 之间循环直到完成；`ToolCallRecorder` 可视化工具调用。
+  2. **SequentialAgent**（顺序）：`subAgents(写作→评审)`，后一个自动读前一个输出。
+  3. **LlmRoutingAgent**（路由）：LLM 判断问题类型后单次分发到研究 / 编程 / 写作助手。
+  4. **graph-core 手写意图路由工作流**（原理入门）：入口 → classify 节点(LLM 分类) → 条件边 → 对应 worker → END，演示"图编排"最小形态。
+  5. **graph-core 手写 Supervisor 多智能体**（监督者循环路由）：supervisor 节点循环决定调 researcher / coder 直到 FINISH；**注意 SAA 1.1.2.2 的 agent-framework 尚未提供封装的 SupervisorAgent，故用 graph-core 手写**，恰好印证"高层模式底层就是一张图"。
+- 关键 API：`KeyStrategyFactory` 用 lambda `() -> Map.<String, KeyStrategy>of(...)` 声明各 key 的合并策略（Replace / Append）；`node_async(NodeAction)` / `edge_async(EdgeAction)` 为静态导入；`GraphStateException` 为 checked 异常需在 @Bean 方法签名声明。
+- 端点 `POST /api/agent6/{react,sequential,routing,workflow,supervisor}` + 演示页 `agent6.html`。
+- 详见 `docs/阶段6-知识点总结.md`（待验证通过后生成）。
+
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
@@ -130,6 +150,7 @@
 - [x] 阶段 4：工具调用（`@Tool` + `FunctionToolCallback`，5 个工具：时间/计算器/天气/知识库检索/创建工单；`ToolCallRecorder`(ThreadLocal) 可视化工具调用；`agentClient` 注册工具）
 - [x] 阶段 4 扩展：agent 对话落库（复用 `ConversationService` type=agent + `ChatLogService` + 记忆 Advisor）+ 工单落库（新建 `task_ticket` 表，`CreateTaskTool` 建单即写库；来源无关为阶段 6/7 留缝）
 - [x] 阶段 5：多模态（`spring-ai-alibaba-starter-dashscope` 接入；qwen-vl-max 图片理解 + 通义万相 Wanx 文生图；`multimodal.html` 双模块演示页）
+- [x] 阶段 6：Agent 编排（`spring-ai-alibaba-graph-core` + `spring-ai-alibaba-agent-framework`；ReactAgent 工具循环 + SequentialAgent 顺序 + LlmRoutingAgent 路由 + graph-core 手写意图路由工作流 + graph-core 手写 Supervisor 多智能体；`agent6.html` tab 演示五种形态；主力模型 DeepSeek V4）
 
 ## 学习计划（每阶段 = 给产品加一块能力）
 - [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
@@ -137,7 +158,7 @@
 - [x] 阶段 3｜RAG 检索增强：`document-reader-*` → `TokenTextSplitter` → Embedding → 向量库 → `QuestionAnswerAdvisor` / RagWay
 - [x] 阶段 4｜工具调用：`@Tool` + `FunctionToolCallback`（让模型调你的 Spring Bean）
 - [x] 阶段 5｜多模态：通义千问图片理解 + 通义万相文生图
-- [ ] 阶段 6｜Agent 编排：`spring-ai-alibaba-graph-core` → `ReactAgent` → 多智能体（Sequential / Routing / Supervisor）
+- [x] 阶段 6｜Agent 编排：`spring-ai-alibaba-graph-core` → `ReactAgent` → 多智能体（Sequential / Routing / Supervisor）
 - [ ] 阶段 7｜MCP 集成：`nacos-mcp-client` / 标准 MCP，接入外部工具
 - [ ] 阶段 8｜工程化：可观测（ARMS / Langfuse）、Guardrails、Docker 部署
 
