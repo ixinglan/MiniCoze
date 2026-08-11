@@ -10,7 +10,8 @@
   body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
          background:var(--bg); color:var(--text); }
   nav { display: flex; gap: 6px; align-items: center; padding: 12px 20px; background: var(--card);
-        border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+        border-bottom: 1px solid var(--line); flex-wrap: wrap;
+        position: sticky; top: 0; z-index: 100; }
   nav a { text-decoration: none; color: var(--muted); font-size: 13px; padding: 6px 12px; border-radius: 8px; }
   nav a:hover { background: var(--bg); color: var(--text); }
   nav a.active { background: #eaf0ff; color: var(--primary); font-weight: 600; }

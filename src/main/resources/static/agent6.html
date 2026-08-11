@@ -10,7 +10,8 @@
   body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
          background:var(--bg); color:var(--text); }
   nav { display: flex; gap: 6px; align-items: center; padding: 12px 20px; background: var(--card);
-        border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+        border-bottom: 1px solid var(--line); flex-wrap: wrap;
+        position: sticky; top: 0; z-index: 100; }
   nav a { text-decoration: none; color: var(--muted); font-size: 13px; padding: 6px 12px; border-radius: 8px; }
   nav a:hover { background: var(--bg); color: var(--text); }
   nav a.active { background: #eaf0ff; color: var(--primary); font-weight: 600; }
@@ -49,6 +50,15 @@
         margin-bottom: 6px; line-height: 1.5; word-break: break-word; }
   .call b { color: var(--tool); }
   .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  /* 图结构开关 */
+  .diag-toggle { font-size: 12px; color: var(--primary); cursor: pointer;
+        border: 1px dashed var(--line); background: transparent; padding: 6px 12px;
+        border-radius: 8px; margin: 10px 0; display: inline-block; transition: .15s; }
+  .diag-toggle:hover { border-color: var(--primary); background: #f5f8ff; }
+  .diag-box { display: none; margin: 12px 0; padding: 18px; background: #fafbfd;
+        border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; text-align: center; }
+  .diag-box.show { display: block; }
+  .diag-box svg { max-width: 100%; height: auto; }
 </style>
 </head>
 <body>
@@ -119,7 +129,36 @@
   <section class="panel" data-mode="workflow">
     <div class="card">
       <h2>graph-core 手写 · 意图路由工作流</h2>
-      <p class="sub">用 StateGraph 手写最小图：分类节点 → 条件边 → 对应 worker。理解“图编排”原理的入门示例。</p>
+      <p class="sub">用 StateGraph 手写最小图：分类节点 → 条件边 → 对应 worker。理解"图编排"原理的入门示例。</p>
+      <button class="diag-toggle" onclick="toggleDiag('diag-workflow')">📐 查看图结构</button>
+      <div class="diag-box" id="diag-workflow">
+        <svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr-wf" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0,0 8,3 0,6" fill="#8899aa"/></marker>
+            <filter id="sh-wf"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity=".08"/></filter>
+          </defs>
+          <!-- 节点 -->
+          <rect x="20" y="110" width="70" height="36" rx="18" fill="#e8ecf2"/><text x="55" y="133" text-anchor="middle" font-size="12" fill="#5a6a7a" font-weight="600">START</text>
+          <rect x="140" y="100" width="130" height="54" rx="8" fill="#eaf0ff" stroke="#3b6cff" stroke-width="1.5" filter="url(#sh-wf)"/><text x="205" y="124" text-anchor="middle" font-size="13" fill="#3b6cff" font-weight="600">classify</text><text x="205" y="143" text-anchor="middle" font-size="10" fill="#7a8a9a">LLM 意图分类</text>
+          <rect x="370" y="30" width="130" height="50" rx="8" fill="#e6f5ec" stroke="#1a8a3c" stroke-width="1.5" filter="url(#sh-wf)"/><text x="435" y="53" text-anchor="middle" font-size="13" fill="#1a8a3c" font-weight="600">research</text><text x="435" y="70" text-anchor="middle" font-size="10" fill="#5a7a5a">研究助手</text>
+          <rect x="370" y="105" width="130" height="50" rx="8" fill="#fff3e0" stroke="#b26a00" stroke-width="1.5" filter="url(#sh-wf)"/><text x="435" y="128" text-anchor="middle" font-size="13" fill="#b26a00" font-weight="600">coding</text><text x="435" y="145" text-anchor="middle" font-size="10" fill="#8a7a5a">编程助手</text>
+          <rect x="370" y="180" width="130" height="50" rx="8" fill="#f3efff" stroke="#7c4dff" stroke-width="1.5" filter="url(#sh-wf)"/><text x="435" y="203" text-anchor="middle" font-size="13" fill="#7c4dff" font-weight="600">writing</text><text x="435" y="220" text-anchor="middle" font-size="10" fill="#7a6a9a">写作助手</text>
+          <rect x="610" y="110" width="60" height="36" rx="18" fill="#e8ecf2"/><text x="640" y="133" text-anchor="middle" font-size="12" fill="#5a6a7a" font-weight="600">END</text>
+          <!-- 边 -->
+          <line x1="90" y1="128" x2="138" y2="127" stroke="#8899aa" stroke-width="1.5" marker-end="url(#arr-wf)"/>
+          <line x1="270" y1="127" x2="368" y2="55" stroke="#1a8a3c" stroke-width="1.2" marker-end="url(#arr-wf)"/>
+          <line x1="270" y1="127" x2="368" y2="130" stroke="#b26a00" stroke-width="1.2" marker-end="url(#arr-wf)"/>
+          <line x1="270" y1="127" x2="368" y2="205" stroke="#7c4dff" stroke-width="1.2" marker-end="url(#arr-wf)"/>
+          <line x1="500" y1="55" x2="608" y2="128" stroke="#1a8a3c" stroke-width="1.2" marker-end="url(#arr-wf)"/>
+          <line x1="500" y1="130" x2="608" y2="128" stroke="#b26a00" stroke-width="1.2" marker-end="url(#arr-wf)"/>
+          <line x1="500" y1="205" x2="608" y2="128" stroke="#7c4dff" stroke-width="1.2" marker-end="url(#arr-wf)"/>
+          <!-- 标签 -->
+          <text x="300" y="45" font-size="10" fill="#1a8a3c">RESEARCH</text>
+          <text x="300" y="119" font-size="10" fill="#b26a00">CODING</text>
+          <text x="300" y="230" font-size="10" fill="#7c4dff">WRITING</text>
+          <text x="320" y="157" font-size="9" fill="#8899aa" font-style="italic">条件边：读 state.route 动态选路</text>
+        </svg>
+      </div>
       <textarea id="workflow-input">研究对比 Rust 和 Go 的并发模型差异</textarea>
       <div class="row"><button class="go" onclick="run('workflow')">运行</button></div>
       <div class="result" id="workflow-output"></div>
@@ -131,7 +170,50 @@
   <section class="panel" data-mode="supervisor">
     <div class="card">
       <h2>graph-core 手写 · Supervisor 多智能体</h2>
-      <p class="sub">监督者节点循环决定调用研究员 / 程序员，直到判定 FINISH。演示“多智能体协作”本质就是一张图。</p>
+      <p class="sub">监督者节点循环决定调用研究员 / 程序员，直到判定 FINISH。演示"多智能体协作"本质就是一张图。</p>
+      <button class="diag-toggle" onclick="toggleDiag('diag-supervisor')">📐 查看图结构</button>
+      <div class="diag-box" id="diag-supervisor">
+        <svg viewBox="0 0 760 360" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr-sv" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0,0 8,3 0,6" fill="#8899aa"/></marker>
+            <marker id="arr-sv-r" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0,0 8,3 0,6" fill="#7c4dff"/></marker>
+            <marker id="arr-sv-b" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0,0 8,3 0,6" fill="#1a8a3c"/></marker>
+            <filter id="sh-sv"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity=".08"/></filter>
+          </defs>
+          <!-- 节点 -->
+          <rect x="20" y="155" width="70" height="36" rx="18" fill="#e8ecf2"/><text x="55" y="178" text-anchor="middle" font-size="12" fill="#5a6a7a" font-weight="600">START</text>
+          <rect x="160" y="45" width="180" height="80" rx="10" fill="#eaf0ff" stroke="#3b6cff" stroke-width="1.5" filter="url(#sh-sv)"/>
+            <text x="250" y="68" text-anchor="middle" font-size="14" fill="#3b6cff" font-weight="600">supervisor（监督者）</text>
+            <text x="250" y="86" text-anchor="middle" font-size="10" fill="#6a7a9a">LLM 观察 state 决定: researcher / coder / FINISH</text>
+            <text x="250" y="104" text-anchor="middle" font-size="10" fill="#6a7a9a">📌 step≥3 强制 FINISH 防止死循环</text>
+            <text x="250" y="118" text-anchor="middle" font-size="10" fill="#8899aa" font-style="italic">KeyStrategy: result=AppendStrategy（多轮追加）</text>
+          <rect x="420" y="20" width="130" height="50" rx="8" fill="#e6f5ec" stroke="#1a8a3c" stroke-width="1.5" filter="url(#sh-sv)"/><text x="485" y="43" text-anchor="middle" font-size="13" fill="#1a8a3c" font-weight="600">researcher</text><text x="485" y="60" text-anchor="middle" font-size="10" fill="#5a7a5a">研究助手</text>
+          <rect x="420" y="100" width="130" height="50" rx="8" fill="#fff3e0" stroke="#b26a00" stroke-width="1.5" filter="url(#sh-sv)"/><text x="485" y="123" text-anchor="middle" font-size="13" fill="#b26a00" font-weight="600">coder</text><text x="485" y="140" text-anchor="middle" font-size="10" fill="#8a7a5a">编程助手</text>
+          <rect x="340" y="260" width="80" height="36" rx="18" fill="#e6f5ec" stroke="#1a8a3c" stroke-width="1"/>
+            <text x="380" y="283" text-anchor="middle" font-size="12" fill="#1a8a3c" font-weight="600">FINISH</text>
+          <rect x="490" y="260" width="60" height="36" rx="18" fill="#e8ecf2"/><text x="520" y="283" text-anchor="middle" font-size="12" fill="#5a6a7a" font-weight="600">END</text>
+          <!-- 边 -->
+          <line x1="90" y1="173" x2="158" y2="110" stroke="#8899aa" stroke-width="1.5" marker-end="url(#arr-sv)"/>
+          <!-- supervisor → workers -->
+          <line x1="250" y1="125" x2="250" y2="152" stroke="#7c4dff" stroke-width="1.2" opacity="0"/>
+          <line x1="340" y1="85" x2="418" y2="45" stroke="#1a8a3c" stroke-width="1.5" marker-end="url(#arr-sv-b)"/>
+          <line x1="340" y1="105" x2="418" y2="125" stroke="#b26a00" stroke-width="1.5" marker-end="url(#arr-sv)"/>
+          <!-- workers → supervisor 回环 -->
+          <path d="M420,45 Q160,10 250,60" fill="none" stroke="#7c4dff" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr-sv-r)"/>
+          <path d="M550,125 Q620,80 420,20" fill="none" stroke-opacity="0" stroke-width="0"/>
+          <path d="M550,125 Q620,160 340,100" fill="none" stroke="#7c4dff" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr-sv-r)"/>
+          <!-- supervisor → FINISH -->
+          <line x1="340" y1="105" x2="375" y2="258" stroke="#1a8a3c" stroke-width="1.5" marker-end="url(#arr-sv-b)"/>
+          <!-- FINISH → END -->
+          <line x1="420" y1="278" x2="488" y2="278" stroke="#8899aa" stroke-width="1.5" marker-end="url(#arr-sv)"/>
+          <!-- 标签 -->
+          <text x="350" y="25" font-size="10" fill="#1a8a3c">researcher</text>
+          <text x="350" y="148" font-size="10" fill="#b26a00">coder</text>
+          <text x="140" y="35" font-size="9" fill="#7c4dff" font-style="italic">← 回环：干完活回到 supervisor</text>
+          <text x="355" y="248" font-size="10" fill="#1a8a3c" font-weight="600">LLM 判定完成</text>
+          <text x="140" y="178" font-size="10" fill="#3b6cff">条件边：读 state.next</text>
+        </svg>
+      </div>
       <textarea id="supervisor-input">先调研一下向量数据库的常见选型，再写一段调用示例</textarea>
       <div class="row"><button class="go" onclick="run('supervisor')">运行</button></div>
       <div class="result" id="supervisor-output"></div>
@@ -195,6 +277,12 @@
       document.querySelector('.panel[data-mode="' + b.dataset.mode + '"]').classList.add('active');
     };
   });
+
+  // 图结构展开/收起
+  function toggleDiag(id){
+    const el = document.getElementById(id);
+    el.classList.toggle('show');
+  }
 </script>
 </body>
 </html>
