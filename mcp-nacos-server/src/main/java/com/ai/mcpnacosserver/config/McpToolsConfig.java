@@ -2,7 +2,7 @@ package com.ai.mcpnacosserver.config;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -25,8 +25,10 @@ import java.util.UUID;
  *  - text_stats：文本统计（字数/字符数/行数）
  *  - server_status：查询服务健康状态
  * </p>
+ *
+ * 注意：@Tool 如果有变化，需要改配置文件里的版本号，例：比如 tool s数量变化，就需要改版本号,nacos里就会生成新版本配置
  */
-@Component  // 注册为 Spring Bean，使 @Tool 方法能被 MCP Server 扫描到
+@Service  // 注册为 Spring Bean，使 @Tool 方法能被 MCP Server 扫描到
 public class McpToolsConfig {
 
     private final Random random = new Random();

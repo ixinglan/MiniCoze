@@ -5,20 +5,27 @@ spring:
   application:
     name: mcp-nacos-server   # Nacos 注册的服务名，主应用通过此名称发现
 
-  # ===== Nacos 服务发现 =====
-  cloud:
-    nacos:
-      discovery:
-        server-addr: localhost:8848    # Nacos 服务端地址
-        namespace:                     # 命名空间（public 留空即可）
-        enabled: true
-
+  # 阶段 7 参考文档：https://nacos.io/docs/latest/manual/user/ai/mcp-auto-register/?spm=5238cd80.297dad21.0.0.271de37eSClDtZ
+  # ===== Nacos 服务发现（Nacos 3.x，8848 是 API 端口，非控制台端口）=====
   ai:
     mcp:
       server:
-        type: async          # 异步模式（SSE 传输）
-        name: nacos-mcp-server
+        type: async          # 异步模式（SSE 传输），同步用 SYNC
+        name: mcp-nacos-server   # MCP Server 名称，会注册到 Nacos 供客户端发现
         version: 1.0.0
+        instructions: generate_uuid：生成 UUID - random_number：生成随机整数 - text_stats：文本统计（字数/字符数/行数） - server_status：查询服务健康状态
+
+    # ===== Nacos MCP 注册配置 =====
+    # 将 MCP Server 的工具元数据注册到 Nacos，主应用通过 nacos-mcp-client 自动发现
+    alibaba:
+      mcp:
+        nacos:
+          server-addr: localhost:8848    # Nacos API 端口（3.x 控制台在 8080）
+          namespace: public              # Nacos 命名空间 ID（public 留空即可）
+          username: nacos                # Nacos 3.x 强制鉴权
+          password: ${NACOS_PASSWORD:123456}
+          register:
+            enabled: true                # 启动时自动注册 MCP 元数据到 Nacos
 
 logging:
   level:

@@ -93,22 +93,17 @@
             <artifactId>spring-ai-alibaba-graph-core</artifactId>
         </dependency>
 
+        <!-- 阶段 7 参考文档：https://nacos.io/docs/latest/manual/user/ai/mcp-auto-register/?spm=5238cd80.297dad21.0.0.271de37eSClDtZ -->
         <!-- 阶段 7 MCP：标准 MCP Client（stdio + SSE 连接远程 MCP Server） -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-mcp-client</artifactId>
+            <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
         </dependency>
 
         <!-- 阶段 7 MCP：Nacos MCP Client（通过 Nacos 服务发现自动发现 MCP Server） -->
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-nacos-mcp-client</artifactId>
-        </dependency>
-
-        <!-- 阶段 7 MCP 底层：WebClient（SSE 传输需要响应式 HTTP 客户端） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
+            <artifactId>spring-ai-alibaba-starter-mcp-registry</artifactId>
         </dependency>
     </dependencies>
 

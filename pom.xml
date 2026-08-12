@@ -57,18 +57,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <!-- 强阶段 7：nacos-mcp-client 不在 SAA/BOM 管理范围，需显式声明版本 -->
-            <dependency>
-                <groupId>com.alibaba.cloud.ai</groupId>
-                <artifactId>spring-ai-alibaba-starter-nacos-mcp-client</artifactId>
-                <version>1.0.0.2</version>
-            </dependency>
-            <!-- 强阶段 7：Nacos Discovery（SCA 2025.0.0.0 适配 Boot 3.5.x，含 Nacos 3.0.3） -->
-            <dependency>
-                <groupId>com.alibaba.cloud</groupId>
-                <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
-                <version>2025.0.0.0</version>
-            </dependency>
             <!-- 强制 mybatis-spring 版本：mybatis-plus-boot-starter 默认锁了 2.1.2（Spring 5 时代），
                  而 Spring Boot 3.5 用 Spring 6.2，要求 factoryBeanObjectType 为 Class 类型，
                  2.1.2 写入的是 String 会导致 Mapper 注册失败。3.0.x 已适配 Spring 6.2。 -->

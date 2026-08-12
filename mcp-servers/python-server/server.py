@@ -28,7 +28,7 @@ import json
 import operator
 from datetime import datetime
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 # ===== 第一步：创建 MCP 服务实例 =====
 # FastMCP 是 mcp 包提供的高层 API，封装了底层协议细节。
