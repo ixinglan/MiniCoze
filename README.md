@@ -11,6 +11,7 @@
 - 模型：DeepSeek V4（仅对话，OpenAI 兼容协议，**公开 API 不支持图片输入**）+ 通义千问视觉 **qwen-vl-max**（图片理解，走 DashScope）+ 通义万相 **Wanx**（文生图，走 DashScope）+ Ollama 本地 bge-m3（embedding / RAG 向量化）
 - 向量库：默认内存 `SimpleVectorStore`（零依赖）；可切 **Milvus**（docker 起，生产级持久化，维度对齐 bge-m3 的 1024）
 - 文档解析：Apache Tika（`spring-ai-tika-document-reader`），一把覆盖 PDF / Word / Excel / PPT / TXT / MD
+- MCP（阶段 7）：Model Context Protocol，跨进程跨语言工具协议；多模块工程（`ai-workshop` 主应用 + `mcp-nacos-server` MCP Server），stdio（Python FastMCP）+ SSE（Java Server）双路集成
 
 ## 快速开始
 1. 获取 DeepSeek API Key：https://platform.deepseek.com/api_keys
@@ -23,11 +24,18 @@
    # 安装见 https://ollama.com ，然后：
    ollama pull bge-m3
    ```
-4. 运行：
+4. 运行主应用（多模块工程，指定 `ai-workshop` 模块）：
    ```bash
-   mvn spring-boot:run
+   mvn spring-boot:run -pl ai-workshop
    ```
-5. 打开浏览器：http://localhost:9999/ 即可对话。
+5. （可选，阶段 7 MCP 才用到）启动 MCP Server：
+   - **stdio 路线**：主应用自动拉起 Python 子进程，需先 `pip install fastmcp`（详见 `mcp-servers/python-server/requirements.txt`）
+   - **SSE 路线**：另开终端启动 Java MCP Server（`mcp-nacos-server`，端口 9988）：
+     ```bash
+     mvn spring-boot:run -pl mcp-nacos-server
+     ```
+   - （可选）Nacos 服务端：`docker/nacos-standalone.yml` 一键起，控制台 http://localhost:8080，API http://localhost:8848
+6. 打开浏览器：http://localhost:9999/ 即可对话。
    - 接口：
      - `GET  /api/chat/stream?message=你好&conversationId=xxx`（SSE 流式，多轮记忆靠 conversationId 隔离）
      - `POST /api/chat`（JSON `{ "message": "...", "conversationId": "xxx" }`）
@@ -64,6 +72,8 @@
      - `POST /api/agent6/routing`（LlmRoutingAgent 单次路由分发，返回 `{ mode, result, trace }`）
      - `POST /api/agent6/workflow`（graph-core 手写意图路由工作流，返回 `{ mode, route, result }`）
      - `POST /api/agent6/supervisor`（graph-core 手写 Supervisor 多智能体循环路由，返回 `{ mode, result }`）
+   - **MCP 集成**（阶段 7，`agent6.html` → MCP tab）：
+     - `GET /api/agent6/mcp/tools`（列出所有已连接 MCP Server 的工具清单，含来源标识；stdio 4 个 Python 工具 + SSE 4 个 Java 工具 = 8 个）
 
 ## 多模型骨架说明
 - **DeepSeek V4** 提供 `ChatModel`：负责对话、流式输出（纯文本；其公开 API 不支持图片输入）。
@@ -134,6 +144,18 @@
 - 端点 `POST /api/agent6/{react,sequential,routing,workflow,supervisor}` + 演示页 `agent6.html`。
 - 详见 `docs/阶段6-知识点总结.md`（待验证通过后生成）。
 
+## 阶段 7 MCP 集成（Model Context Protocol）
+- 目标：把"工具"从**进程内 `@Tool` 方法**升级成**跨进程、跨语言的标准协议**。Agent 不再只能调用同进程的 Java 方法，还能调用一个独立的 Python 进程、一个独立的 Java 微服务——只要它们实现了 MCP 协议。这是从"单体 Agent"走向"工具即服务"的关键一步。
+- **多模块工程**：根 POM `packaging=pom`，下挂两个模块——`ai-workshop`（主应用，端口 9999，MCP Client）+ `mcp-nacos-server`（独立 MCP Server，端口 9988，SSE 传输）。根目录另有 `mcp-servers/python-server/`（Python FastMCP Server，stdio 传输，非 Maven 模块）。
+- **双路 MCP 集成**（两路并行，互不依赖）：
+  1. **stdio 路线（Python FastMCP）**：主应用启动一个 Python 子进程，通过标准输入/输出收发 JSON-RPC，发现 4 个工具（`generate_uuid` / `generate_password` / `http_request` / `text_stats`）。配置在 `spring.ai.mcp.client.stdio.connections.python-tools-server`。
+  2. **SSE 路线（Java Server）**：独立 Java 微服务 `mcp-nacos-server` 通过 SSE 端点 `/sse` 暴露 4 个工具（`generate_uuid` / `calculate` / `query_weather` / `generate_qrcode`）。主应用用标准 Spring AI SSE Client 直连 `http://localhost:9988/sse`（配置 `spring.ai.mcp.client.sse.connections.nacos-mcp-server`）。
+- **工具汇聚**：`McpConfig` 收集所有 MCP `ToolCallback`（注入 `List<ToolCallback>`）→ `Agent6Config` 注入到 `mcpChatClient` → Agent 无感调用远程工具，与阶段 4 的本地 `@Tool` 用法一致。
+- **依赖选型大坑（反编译核实）**：SAA 1.1.x 的 Nacos MCP 体系有三个 artifact，职责完全不同——`mcp-registry`（1.1.2.1，**仅服务端注册**，自动配置需 `McpSyncServer` bean，主应用没有 → 全部跳过）/ `nacos-mcp-client`（1.0.0.2 旧客户端，**直连 Nacos 发现**，不在 1.1.x BOM 里需显式写版本）/ `mcp-router`（1.1.2.1，**中间路由聚合层**，Client 不直连 Nacos 而连 router，router 再聚合多 MCP Server）。本项目最终采用方案 B：**主应用用标准 Spring AI SSE 直连**，放弃 Nacos 动态发现（1.1.x 要用 Nacos 发现得再装 mcp-router 中间层，阶段学习成本过高）。服务端 `mcp-nacos-server` 仍保留 `mcp-registry` 注册到 Nacos（注册和发现是两回事，注册不影响运行）。
+- **配置分层坑**：Spring AI 1.1.2 的 MCP Client 配置按 transport **分层**——`spring.ai.mcp.client.stdio.connections.<name>` / `.sse.connections.<name>` / `.streamable-http.connections.<name>` 各占一个节点。`type` 是 client 级属性（`async`/`sync`），不是 per-connection；SSE 连接只有 `url` + `sse-endpoint` 两个字段。
+- 端点 `GET /api/agent6/mcp/tools` + 演示页 `agent6.html` MCP tab。
+- 详见 `docs/阶段7-知识点总结.md`。
+
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
@@ -151,6 +173,7 @@
 - [x] 阶段 4 扩展：agent 对话落库（复用 `ConversationService` type=agent + `ChatLogService` + 记忆 Advisor）+ 工单落库（新建 `task_ticket` 表，`CreateTaskTool` 建单即写库；来源无关为阶段 6/7 留缝）
 - [x] 阶段 5：多模态（`spring-ai-alibaba-starter-dashscope` 接入；qwen-vl-max 图片理解 + 通义万相 Wanx 文生图；`multimodal.html` 双模块演示页）
 - [x] 阶段 6：Agent 编排（`spring-ai-alibaba-graph-core` + `spring-ai-alibaba-agent-framework`；ReactAgent 工具循环 + SequentialAgent 顺序 + LlmRoutingAgent 路由 + graph-core 手写意图路由工作流 + graph-core 手写 Supervisor 多智能体；`agent6.html` tab 演示五种形态；主力模型 DeepSeek V4）
+- [x] 阶段 7：MCP 集成（多模块工程；stdio Python FastMCP + SSE Java Server 双路并行；标准 Spring AI SSE Client 直连；`McpConfig` 汇聚 ToolCallback → `mcpChatClient`；`agent6.html` MCP tab；8 个 MCP 工具）
 
 ## 学习计划（每阶段 = 给产品加一块能力）
 - [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
@@ -159,7 +182,7 @@
 - [x] 阶段 4｜工具调用：`@Tool` + `FunctionToolCallback`（让模型调你的 Spring Bean）
 - [x] 阶段 5｜多模态：通义千问图片理解 + 通义万相文生图
 - [x] 阶段 6｜Agent 编排：`spring-ai-alibaba-graph-core` → `ReactAgent` → 多智能体（Sequential / Routing / Supervisor）
-- [ ] 阶段 7｜MCP 集成：`nacos-mcp-client` / 标准 MCP，接入外部工具
+- [x] 阶段 7｜MCP 集成：标准 MCP（stdio Python Server + SSE Java Server），接入跨进程跨语言工具
 - [ ] 阶段 8｜工程化：可观测（ARMS / Langfuse）、Guardrails、Docker 部署
 
 ## 参考
