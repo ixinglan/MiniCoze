@@ -142,7 +142,7 @@
   5. **graph-core 手写 Supervisor 多智能体**（监督者循环路由）：supervisor 节点循环决定调 researcher / coder 直到 FINISH；**注意 SAA 1.1.2.2 的 agent-framework 尚未提供封装的 SupervisorAgent，故用 graph-core 手写**，恰好印证"高层模式底层就是一张图"。
 - 关键 API：`KeyStrategyFactory` 用 lambda `() -> Map.<String, KeyStrategy>of(...)` 声明各 key 的合并策略（Replace / Append）；`node_async(NodeAction)` / `edge_async(EdgeAction)` 为静态导入；`GraphStateException` 为 checked 异常需在 @Bean 方法签名声明。
 - 端点 `POST /api/agent6/{react,sequential,routing,workflow,supervisor}` + 演示页 `agent6.html`。
-- 详见 `docs/阶段6-知识点总结.md`（待验证通过后生成）。
+- 详见 `docs/阶段6-知识点总结.md`。
 
 ## 阶段 7 MCP 集成（Model Context Protocol）
 - 目标：把"工具"从**进程内 `@Tool` 方法**升级成**跨进程、跨语言的标准协议**。Agent 不再只能调用同进程的 Java 方法，还能调用一个独立的 Python 进程、一个独立的 Java 微服务——只要它们实现了 MCP 协议。这是从"单体 Agent"走向"工具即服务"的关键一步。
