@@ -100,11 +100,14 @@
             <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
         </dependency>
 
-        <!-- 阶段 7 MCP：Nacos MCP Client（通过 Nacos 服务发现自动发现 MCP Server） -->
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-mcp-registry</artifactId>
-        </dependency>
+        <!-- 阶段 7 MCP：Nacos MCP Client（通过 Nacos 服务发现自动发现 MCP Server）
+            查询文档发现，naocs mcp 发现需要单独安装Nacos-MCP-Router，先不用
+            用 spring ai 原生远程
+        -->
+<!--        <dependency>-->
+<!--            <groupId>com.alibaba.cloud.ai</groupId>-->
+<!--            <artifactId>spring-ai-alibaba-starter-mcp-registry</artifactId>-->
+<!--        </dependency>-->
     </dependencies>
 
     <build>

@@ -86,21 +86,29 @@ spring:
               command: ${MCP_PYTHON_PATH:python}
               args:
                 - ${MCP_PYTHON_SERVER:/Users/ixiaoqiang/WorkBuddy/springAi/mcp-servers/python-server/server.py}
+        sse:
+          connections:
+            nacos-mcp-server:
+              # 实际还是 sse 连接原始 mcp server
+              url: ${MCP_NACOS_URL:http://localhost:9988}
+              sse-endpoint: ${MCP_NACOS_SSE_ENDPOINT:/sse}
+
     # ---- Nacos MCP 服务发现（Nacos 3.x，8848 是 API 端口，非控制台端口）----
-    alibaba:
-      mcp:
-        nacos:
-          server-addr: ${NACOS_ADDR:localhost:8848}
-          namespace: public                     # Nacos 命名空间 ID（public 即留空）
-          username: nacos                       # Nacos 3.x 强制鉴权
-          password: ${NACOS_PASSWORD:123456}
-          client:
-            enabled: true
-            sse:
-              connections:
-                server1:
-                  service-name: mcp-nacos-server   # 对应 Nacos 中注册的 MCP Server 服务名
-                  version: 1.0.0                   # 对应 MCP Server 的版本号
+    # nacos 现在要做 mcp 自动发现需要再安装一个 mcp-router, 先不用这个配置
+#    alibaba:
+#      mcp:
+#        nacos:
+#          server-addr: ${NACOS_ADDR:localhost:8848}
+#          namespace: public                     # Nacos 命名空间 ID（public 即留空）
+#          username: nacos                       # Nacos 3.x 强制鉴权
+#          password: ${NACOS_PASSWORD:123456}
+#          client:
+#            enabled: true
+#            sse:
+#              connections:
+#                server1:
+#                  service-name: mcp-nacos-server   # 对应 Nacos 中注册的 MCP Server 服务名
+#                  version: 1.0.0                   # 对应 MCP Server 的版本号
 
 server:
   port: 9999

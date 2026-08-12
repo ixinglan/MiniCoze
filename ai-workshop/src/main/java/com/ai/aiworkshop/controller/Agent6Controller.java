@@ -58,7 +58,7 @@ public class Agent6Controller {
                             @Qualifier("supervisorGraph") CompiledGraph supervisorGraph,
                             ToolCallRecorder recorder,
                             @Qualifier("mcpChatClient") ChatClient mcpChatClient,
-                            @Qualifier("mcpToolCallbacks") List<ToolCallback> mcpToolCallbacks) {
+                            List<ToolCallback> mcpToolCallbacks) {
         this.reactAgent = reactAgent;
         this.sequentialAgent = sequentialAgent;
         this.routingAgent = routingAgent;

@@ -74,14 +74,14 @@ public class Agent6Config {
     public Agent6Config(@Qualifier("deepSeekChatModel") ChatModel deepSeek,
                         DateTimeTool dateTimeTool, CalculatorTool calculatorTool,
                         WeatherTool weatherTool, RagQueryTool ragQueryTool, CreateTaskTool createTaskTool,
-                        @Lazy List<ToolCallback> mcpTools) {
+                        @Lazy List<ToolCallback> mcpToolCallbacks) {
         this.deepSeek = deepSeek;
         this.dateTimeTool = dateTimeTool;
         this.calculatorTool = calculatorTool;
         this.weatherTool = weatherTool;
         this.ragQueryTool = ragQueryTool;
         this.createTaskTool = createTaskTool;
-        this.mcpTools = mcpTools != null ? mcpTools : List.of();
+        this.mcpTools = mcpToolCallbacks != null ? mcpToolCallbacks : List.of();
     }
 
     /**
@@ -105,7 +105,7 @@ public class Agent6Config {
     public ChatClient mcpChatClient(@Qualifier("deepSeekChatModel") ChatModel deepSeek) {
         var builder = ChatClient.builder(deepSeek);
         if (!mcpTools.isEmpty()) {
-            builder.defaultTools(mcpTools.toArray(new ToolCallback[0]));
+            builder.defaultToolCallbacks(mcpTools);
         }
         return builder.build();
     }
