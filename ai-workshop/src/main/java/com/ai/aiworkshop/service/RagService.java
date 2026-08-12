@@ -1,6 +1,5 @@
 package com.ai.aiworkshop.service;
 
-import com.ai.aiworkshop.config.ChatClientConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Qualifier;

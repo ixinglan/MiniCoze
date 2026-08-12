@@ -1,25 +1,20 @@
 package com.ai.aiworkshop.config;
 
+import com.ai.aiworkshop.mapper.ChatMemoryMapper;
+import com.ai.aiworkshop.repository.MysqlChatMemoryRepository;
+import com.ai.aiworkshop.tools.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
-import com.ai.aiworkshop.mapper.ChatMemoryMapper;
-import com.ai.aiworkshop.repository.MysqlChatMemoryRepository;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import com.ai.aiworkshop.tools.CalculatorTool;
-import com.ai.aiworkshop.tools.CreateTaskTool;
-import com.ai.aiworkshop.tools.DateTimeTool;
-import com.ai.aiworkshop.tools.RagQueryTool;
-import com.ai.aiworkshop.tools.WeatherTool;
 
 @Configuration
 public class ChatClientConfig {

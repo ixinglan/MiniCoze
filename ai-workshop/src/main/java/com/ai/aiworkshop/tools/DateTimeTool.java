@@ -1,7 +1,6 @@
 package com.ai.aiworkshop.tools;
 
 import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;

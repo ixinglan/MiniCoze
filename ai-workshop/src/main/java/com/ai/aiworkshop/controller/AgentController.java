@@ -1,21 +1,17 @@
 package com.ai.aiworkshop.controller;
 
+import com.ai.aiworkshop.entity.TaskTicketDO;
 import com.ai.aiworkshop.mapper.TaskTicketMapper;
 import com.ai.aiworkshop.service.ChatLogService;
 import com.ai.aiworkshop.service.ConversationService;
 import com.ai.aiworkshop.tools.CreateTaskTool;
 import com.ai.aiworkshop.tools.ToolCallRecorder;
-import com.ai.aiworkshop.entity.TaskTicketDO;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
 import java.util.List;
