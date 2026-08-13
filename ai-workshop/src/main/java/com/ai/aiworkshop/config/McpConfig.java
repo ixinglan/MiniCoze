@@ -25,8 +25,12 @@ import java.util.List;
 @Configuration
 public class McpConfig {
 
+    /**
+     * required=false：MCP Client 是可选的（如容器部署禁用 MCP、或连接失败时），
+     * 该 Bean 可能不存在 —— 注入 null，下方判空返回空列表，保证应用照常启动。
+     */
     @Qualifier("mcpAsyncToolCallbacks")
-    @Autowired
+    @Autowired(required = false)
     ToolCallbackProvider mcpToolCallbackProvider;
 
     /**

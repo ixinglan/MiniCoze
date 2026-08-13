@@ -1,0 +1,41 @@
+# ===== AI Workshop 主应用一键部署（docker compose）=====
+# 用法：
+#   1) 配置密钥：项目根目录建 .env 文件（参照 .env.example），或 export 环境变量
+#   2) docker compose -f docker/app-deploy.yml up -d --build
+#   3) 打开 http://localhost:9999
+#
+# 说明：
+# - 主应用容器化（单阶段 Dockerfile），MySQL / Milvus / Ollama / Langfuse 复用宿主机已有服务
+#   （通过 host.docker.internal 访问宿主机 localhost 端口）
+# - 容器版精简：禁用 MCP Client（容器内无 stdio Python 环境；McpConfig 已支持 MCP 可选，
+#   Agent 的本地 @Tool 工具不受影响）。本地 IDE 运行仍是完整版（含 MCP）。
+# - 时区：connection-init-sql 已由应用配置为东八区，与本地一致。
+name: ai-workshop
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: ai-workshop/Dockerfile
+    container_name: ai-workshop-app
+    ports:
+      - "9999:9999"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # 容器内访问宿主机 localhost 服务
+    environment:
+      # ---- API 密钥（来自 .env / 环境变量，必填）----
+      AI_DEEPSEEK_API_KEY: ${AI_DEEPSEEK_API_KEY:?请在 .env 中配置 AI_DEEPSEEK_API_KEY}
+      AI_DASHSCOPE_API_KEY: ${AI_DASHSCOPE_API_KEY:?请在 .env 中配置 AI_DASHSCOPE_API_KEY}
+
+      # ---- 外部依赖地址（宿主机已有服务）----
+      SPRING_DATASOURCE_URL: 'jdbc:mysql://host.docker.internal:3306/mini_coze?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true'
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: "123456"
+      RAG_VECTORSTORE_MILVUS_HOST: host.docker.internal   # Milvus 19530
+      SPRING_AI_OLLAMA_BASE_URL: http://host.docker.internal:11434   # bge-m3 embedding
+      LANGFUSE_OTLP_ENDPOINT: http://host.docker.internal:3000/api/public/otel/v1/traces
+
+      # ---- 容器版精简：禁用 MCP Client ----
+      SPRING_AI_MCP_CLIENT_ENABLED: "false"
+
+    restart: unless-stopped
