@@ -3,6 +3,7 @@ package com.ai.aiworkshop.service;
 import com.ai.aiworkshop.entity.ChatMemoryDO;
 import com.ai.aiworkshop.entity.ConversationDO;
 import com.ai.aiworkshop.mapper.ChatMemoryMapper;
+import com.ai.aiworkshop.auth.CurrentUser;
 import com.ai.aiworkshop.mapper.ConversationMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.springframework.stereotype.Service;
@@ -39,14 +40,18 @@ public class ConversationService {
         d.setId(id);
         d.setTitle("新对话");
         d.setType(type);
+        d.setUserId(CurrentUser.id());   // 阶段 9：会话归属当前登录用户（隔离核心）
         conversationMapper.insert(d);   // created_at / updated_at 由 DB 默认值 CURRENT_TIMESTAMP 填充
         return id;
     }
 
-    /** 会话列表（左侧栏），按最近更新倒序；按 type 过滤，使聊天页与 RAG 页互不串门 */
+    /** 会话列表（左侧栏），按最近更新倒序；按 type + 当前用户过滤，用户之间互不可见 */
     public List<Map<String, Object>> listConversations(String type) {
         List<ConversationDO> list = conversationMapper.selectList(
-                Wrappers.<ConversationDO>query().eq("type", type).orderByDesc("updated_at"));
+                Wrappers.<ConversationDO>query()
+                        .eq("type", type)
+                        .eq("user_id", CurrentUser.id())   // 阶段 9：只看自己的会话
+                        .orderByDesc("updated_at"));
         return list.stream().map(d -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", d.getId());
@@ -63,11 +68,13 @@ public class ConversationService {
      * 因此即使对话超过 20 条（10 轮），用户也能回看全部历史、不会缺头。
      */
     public List<Map<String, Object>> getHistory(String conversationId) {
+        checkOwnership(conversationId);   // 阶段 9：越权访问别人的会话直接拒绝
         return chatLogService.getFullHistory(conversationId);
     }
 
     /** 彻底删除一个会话：清理会话元数据 + 窗口记忆 + 完整日志（手动点删除时调用） */
     public void deleteConversation(String conversationId) {
+        checkOwnership(conversationId);   // 阶段 9：只能删自己的会话
         conversationMapper.deleteById(conversationId);
         chatMemoryMapper.delete(
                 Wrappers.<ChatMemoryDO>update().eq("conversation_id", conversationId));
@@ -80,6 +87,7 @@ public class ConversationService {
      *  2) 若标题还是默认“新对话”，用首句前 30 字设为标题（只设一次）。
      */
     public void touch(String conversationId, String userText) {
+        checkOwnership(conversationId);   // 阶段 9：只能操作自己的会话
         // updated_at 列有 ON UPDATE CURRENT_TIMESTAMP，这里显式更新也更可控
         conversationMapper.update(null,
                 Wrappers.<ConversationDO>update().eq("id", conversationId).setSql("updated_at = NOW()"));
@@ -88,5 +96,17 @@ public class ConversationService {
                 Wrappers.<ConversationDO>update()
                         .eq("id", conversationId).eq("title", "新对话")
                         .set("title", title));
+    }
+
+    /** 阶段 9：校验会话归属当前用户，不是自己的抛异常（越权访问） */
+    private void checkOwnership(String conversationId) {
+        ConversationDO conv = conversationMapper.selectById(conversationId);
+        if (conv == null) {
+            throw new IllegalArgumentException("会话不存在");
+        }
+        Long current = CurrentUser.id();
+        if (current == null || !current.equals(conv.getUserId())) {
+            throw new IllegalArgumentException("无权访问该会话");
+        }
     }
 }

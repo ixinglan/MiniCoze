@@ -33,7 +33,10 @@ public class ChatMemoryDO {
 
     /** 消息元数据，存 Jackson 序列化后的 JSON 字符串；还原时暂不回填（纯文本对话无影响） */
     @TableField("metadata")
-    private String metadata;
+    private String metadata;    /** 归属用户 id（阶段 9 用户隔离） */
+    @TableField("user_id")
+    private Long userId;
+
 
     @TableField("created_at")
     private LocalDateTime createdAt;

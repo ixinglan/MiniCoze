@@ -55,7 +55,10 @@ public class TaskTicketDO {
 
     /** 关联到触发它的 agent 会话 ID，便于溯源 */
     @TableField("conversation_id")
-    private String conversationId;
+    private String conversationId;    /** 归属用户 id（阶段 9 用户隔离） */
+    @TableField("user_id")
+    private Long userId;
+
 
     @TableField("created_at")
     private LocalDateTime createdAt;

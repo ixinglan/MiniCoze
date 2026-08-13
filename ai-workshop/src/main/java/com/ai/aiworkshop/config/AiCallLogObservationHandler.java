@@ -91,6 +91,14 @@ public class AiCallLogObservationHandler implements ObservationHandler<ChatModel
                 record.setSuccess(true);
             }
 
+            // 5. 阶段 9：观测归属当前登录用户（obs.html 按用户隔离）。
+            //    异步线程里 SecurityContext 可能取不到 → 留 null（老数据归 admin 由迁移兜底）
+            try {
+                record.setUserId(com.ai.aiworkshop.auth.CurrentUser.id());
+            } catch (Exception ignored) {
+                // 观测链路绝不允许影响主业务
+            }
+
             aiCallLogMapper.insert(record);
         } catch (Exception e) {
             // 观测链路失败绝不影响主业务：只记日志

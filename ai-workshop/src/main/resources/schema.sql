@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS chat_memory (
     message_type   VARCHAR(16)   NOT NULL,   -- USER / ASSISTANT / SYSTEM / TOOL
     content        TEXT,
     metadata       TEXT,                      -- Jackson 序列化后的 JSON（还原时暂未用，留作扩展）
+    user_id        BIGINT        DEFAULT NULL,    -- 阶段 9：归属用户（隔离用）
     created_at     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (conversation_id, message_index),
     INDEX idx_cm_conv (conversation_id)
@@ -22,7 +23,9 @@ CREATE TABLE IF NOT EXISTS conversation (
     type       VARCHAR(16)  NOT NULL DEFAULT 'chat',
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_conv_type (type)
+    user_id    BIGINT       DEFAULT NULL,          -- 阶段 9：归属用户
+    INDEX idx_conv_type (type),
+    INDEX idx_conv_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 完整对话日志表：append-only，永不随窗口裁剪删除（给人回看完整历史用）
@@ -34,6 +37,7 @@ CREATE TABLE IF NOT EXISTS chat_log (
     conversation_id VARCHAR(64)  NOT NULL,
     role            VARCHAR(16)  NOT NULL,   -- user / assistant / system
     content         TEXT,
+    user_id         BIGINT       DEFAULT NULL,     -- 阶段 9：归属用户
     created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     INDEX idx_cl_conv (conversation_id, created_at)
@@ -52,7 +56,9 @@ CREATE TABLE IF NOT EXISTS rag_file (
     doc_ids      TEXT,                                     -- 该文件切片在向量库的文档 ID（逗号分隔），用于按文件移除索引
     created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     indexed_at   TIMESTAMP    DEFAULT NULL,
-    INDEX idx_rf_status (status)
+    user_id      BIGINT       DEFAULT NULL,        -- 阶段 9：归属用户
+    INDEX idx_rf_status (status),
+    INDEX idx_rf_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 工单表（阶段 4 补全落库）：模型通过“创建工单”工具登记的待办。
@@ -75,6 +81,7 @@ CREATE TABLE IF NOT EXISTS task_ticket (
     conversation_id VARCHAR(64)  DEFAULT NULL,
     created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    user_id         BIGINT       DEFAULT NULL,     -- 阶段 9：归属用户
     INDEX idx_tt_status (status),
     INDEX idx_tt_source (source),
     INDEX idx_tt_conv (conversation_id)
@@ -95,8 +102,37 @@ CREATE TABLE IF NOT EXISTS ai_call_log (
     duration_ms       BIGINT       DEFAULT 0,      -- 本次调用耗时（毫秒）
     success           TINYINT(1)   NOT NULL DEFAULT 1,  -- 1 成功 / 0 失败
     error_msg         VARCHAR(500) DEFAULT NULL,   -- 失败原因（截断到 500 字符）
+    user_id           BIGINT       DEFAULT NULL,   -- 阶段 9：归属用户（观测按用户隔离）
     created_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     INDEX idx_acl_created (created_at),
     INDEX idx_acl_model (model)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ===== 阶段 9：用户表（登录 / 隔离 / 角色）=====
+-- password 存 BCrypt 哈希（60 字符）；role: ADMIN（管理员）/ USER（普通用户）
+CREATE TABLE IF NOT EXISTS users (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    username     VARCHAR(64)  NOT NULL,
+    password     VARCHAR(100) NOT NULL,                -- BCrypt 哈希
+    display_name VARCHAR(64)  DEFAULT NULL,
+    role         VARCHAR(16)  NOT NULL DEFAULT 'USER',
+    enabled      TINYINT(1)   NOT NULL DEFAULT 1,
+    created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_users_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ===== 阶段 9：限流计数表（用户 + IP 双维度，按天）=====
+-- scope_type: USER / IP；scope_value: 用户 id 或 IP 字符串；action: CHAT / UPLOAD
+-- 唯一键保证同一天同维度同动作只有一行，count 原子递增
+CREATE TABLE IF NOT EXISTS rate_limit_count (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    scope_type  VARCHAR(16)  NOT NULL,                -- USER / IP
+    scope_value VARCHAR(128) NOT NULL,                -- 用户 id 或 IP
+    action      VARCHAR(32)  NOT NULL,                -- CHAT / UPLOAD
+    day         DATE         NOT NULL,
+    count       INT          NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_rlc (scope_type, scope_value, action, day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

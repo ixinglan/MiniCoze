@@ -1,5 +1,6 @@
 package com.ai.aiworkshop.service;
 
+import com.ai.aiworkshop.auth.CurrentUser;
 import com.ai.aiworkshop.entity.RagFileDO;
 import com.ai.aiworkshop.mapper.RagFileMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -77,6 +78,7 @@ public class RagFileService {
         String hash = sha256(bytes);
 
         // 重复校验：内容哈希已存在即视为重复（无论 uploaded 还是 indexed 状态）
+        // 阶段 9：按用户查重——每个用户维护自己的文件空间
         RagFileDO dup = findByHash(hash);
         if (dup != null) {
             throw new DuplicateFileException(dup.getFilename(), dup.getStatus(), dup.getId());
@@ -100,6 +102,7 @@ public class RagFileService {
         d.setContentHash(hash);
         d.setStatus("uploaded");
         d.setCreatedAt(LocalDateTime.now());
+        d.setUserId(CurrentUser.id());   // 阶段 9：文件归属当前用户
         ragFileMapper.insert(d);
         return d;
     }
@@ -121,7 +124,10 @@ public class RagFileService {
     public RagFileDO findByHash(String hash) {
         if (hash == null || hash.isEmpty()) return null;
         return ragFileMapper.selectOne(
-                Wrappers.<RagFileDO>query().eq("content_hash", hash).last("LIMIT 1"));
+                Wrappers.<RagFileDO>query()
+                        .eq("content_hash", hash)
+                        .eq("user_id", CurrentUser.id())   // 阶段 9：用户内查重
+                        .last("LIMIT 1"));
     }
 
     /** 批量去重预检：返回已存在的 hash -> {filename, status, id}，供前端上传前提示 */
@@ -129,7 +135,9 @@ public class RagFileService {
         Map<String, Map<String, Object>> result = new LinkedHashMap<>();
         if (hashes == null || hashes.isEmpty()) return result;
         List<RagFileDO> existing = ragFileMapper.selectList(
-                Wrappers.<RagFileDO>query().in("content_hash", hashes));
+                Wrappers.<RagFileDO>query()
+                        .eq("user_id", CurrentUser.id())
+                        .in("content_hash", hashes));
         for (RagFileDO d : existing) {
             Map<String, Object> info = new LinkedHashMap<>();
             info.put("filename", d.getFilename());
@@ -143,7 +151,9 @@ public class RagFileService {
     /** 文件列表（含索引状态），按上传时间倒序 */
     public List<Map<String, Object>> list() {
         List<RagFileDO> list = ragFileMapper.selectList(
-                Wrappers.<RagFileDO>query().orderByDesc("created_at"));
+                Wrappers.<RagFileDO>query()
+                        .eq("user_id", CurrentUser.id())   // 阶段 9：只看自己的文件
+                        .orderByDesc("created_at"));
         return list.stream().map(this::toMap).collect(Collectors.toList());
     }
 
@@ -158,6 +168,7 @@ public class RagFileService {
     public void indexWithProgress(String fileId, ProgressReporter reporter) throws IOException {
         RagFileDO d = ragFileMapper.selectById(fileId);
         if (d == null) throw new IllegalArgumentException("文件不存在: " + fileId);
+        checkOwnership(d);   // 阶段 9：只能操作自己的文件
         File f = new File(d.getStoragePath());
         if (!f.exists()) throw new IllegalStateException("物理文件缺失: " + d.getStoragePath());
 
@@ -253,6 +264,7 @@ public class RagFileService {
     public void removeIndex(String fileId) {
         RagFileDO d = ragFileMapper.selectById(fileId);
         if (d == null) throw new IllegalArgumentException("文件不存在: " + fileId);
+        checkOwnership(d);   // 阶段 9：只能操作自己的文件
         if (d.getDocIds() != null && !d.getDocIds().isEmpty()) {
             List<String> ids = List.of(d.getDocIds().split(","));
             try {
@@ -269,11 +281,20 @@ public class RagFileService {
     public void delete(String fileId) {
         RagFileDO d = ragFileMapper.selectById(fileId);
         if (d == null) return;
+        checkOwnership(d);   // 阶段 9：只能删自己的文件
         removeIndex(fileId);
         try {
             Files.deleteIfExists(Paths.get(d.getStoragePath()));
         } catch (IOException ignored) { }
         ragFileMapper.deleteById(fileId);
+    }
+
+    /** 阶段 9：校验文件归属当前用户 */
+    private void checkOwnership(RagFileDO d) {
+        Long current = CurrentUser.id();
+        if (current == null || !current.equals(d.getUserId())) {
+            throw new IllegalArgumentException("无权操作该文件");
+        }
     }
 
     private Map<String, Object> toMap(RagFileDO d) {

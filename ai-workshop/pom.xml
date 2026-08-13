@@ -44,6 +44,29 @@
             <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
 
+        <!-- 阶段 9 认证：Spring Security（版本由 Boot 管理）+ JWT（jjwt 0.12） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- 模型 1：DeepSeek V4 适配（Spring AI 官方原生支持，OpenAI 兼容协议） -->
         <dependency>
             <groupId>org.springframework.ai</groupId>

@@ -29,7 +29,10 @@ public class ChatLogDO {
     private String role;
 
     @TableField("content")
-    private String content;
+    private String content;    /** 归属用户 id（阶段 9 用户隔离） */
+    @TableField("user_id")
+    private Long userId;
+
 
     @TableField("created_at")
     private LocalDateTime createdAt;

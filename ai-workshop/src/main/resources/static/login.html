@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · AI Workshop</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --line:#e3e8ef; --primary:#3b6cff; --text:#1f2733; --muted:#8a94a6; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:var(--bg); font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:36px 40px;
+          width:340px; box-shadow:0 8px 30px rgba(0,0,0,.05); }
+  .card h1 { font-size:22px; margin:0 0 4px; color:var(--text); }
+  .card .sub { color:var(--muted); font-size:13px; margin:0 0 24px; }
+  label { font-size:12px; color:var(--muted); display:block; margin:14px 0 4px; }
+  input { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+          font-size:14px; outline:none; font-family:inherit; }
+  input:focus { border-color:var(--primary); }
+  button { width:100%; margin-top:20px; padding:11px; border:none; border-radius:10px;
+           background:var(--primary); color:#fff; font-size:15px; cursor:pointer; }
+  button:hover { filter:brightness(1.05); }
+  button:disabled { opacity:.5; cursor:default; }
+  #msg { min-height:18px; font-size:12px; color:#e5484d; margin-top:12px; text-align:center; }
+  .tip { color:var(--muted); font-size:12px; margin-top:20px; text-align:center; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🤖 AI Workshop</h1>
+  <p class="sub">综合知识库 + 自主任务 Agent 工作台 · 演示系统</p>
+
+  <label for="username">用户名</label>
+  <input id="username" autocomplete="username" placeholder="请输入用户名">
+
+  <label for="password">密码</label>
+  <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码">
+
+  <button id="loginBtn" onclick="doLogin()">登 录</button>
+  <div id="msg"></div>
+
+  <p class="tip">演示账号由管理员分配<br>注册暂未开放</p>
+</div>
+
+<script src="auth.js"></script>
+<script>
+  // 已登录直接进系统
+  if (getToken()) { location.href = '/index.html'; }
+
+  const username = document.getElementById('username');
+  const password = document.getElementById('password');
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('loginBtn');
+
+  // 回车提交
+  [username, password].forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  }));
+
+  async function doLogin() {
+    if (!username.value.trim() || !password.value) {
+      msg.textContent = '请输入用户名和密码';
+      return;
+    }
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.value.trim(), password: password.value })
+      });
+      const d = await r.json();
+      if (r.ok && d.token) {
+        setToken(d.token);
+        location.href = '/index.html';
+      } else {
+        msg.textContent = d.message || '登录失败';
+      }
+    } catch (e) {
+      msg.textContent = '网络错误，请重试';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>

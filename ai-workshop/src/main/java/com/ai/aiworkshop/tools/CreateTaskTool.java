@@ -46,6 +46,11 @@ public class CreateTaskTool {
 
         TaskTicketDO t = new TaskTicketDO();
         t.setId(UUID.randomUUID().toString());
+        // 阶段 9：工单归属当前登录用户（工具方法跑在请求线程，SecurityContext 可用；取不到留 null）
+        try {
+            t.setUserId(com.ai.aiworkshop.auth.CurrentUser.id());
+        } catch (Exception ignored) {
+        }
         t.setTitle(title);
         t.setCategory(category);
         t.setPriority(priority);

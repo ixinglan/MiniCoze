@@ -1,6 +1,7 @@
 package com.ai.aiworkshop.service;
 
 import com.ai.aiworkshop.entity.ChatLogDO;
+import com.ai.aiworkshop.auth.CurrentUser;
 import com.ai.aiworkshop.mapper.ChatLogMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class ChatLogService {
         d.setConversationId(conversationId);
         d.setRole(role);
         d.setContent(content);
+        d.setUserId(CurrentUser.id());   // 阶段 9：日志归属当前用户（隔离用，查询按会话走）
         chatLogMapper.insert(d);
     }
 

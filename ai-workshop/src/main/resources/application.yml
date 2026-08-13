@@ -169,6 +169,22 @@ guardrail:
     - "[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+" # 邮箱
   blocked-reply: "⚠️ 该内容已被安全护栏拦截，未发送给模型。"
 
+# ===== 阶段 9：演示系统（用户体系 / 注册开关 / 限流）=====
+app:
+  admin:
+    username: ${APP_ADMIN_USERNAME:admin}              # 启动自动创建的 admin 用户名
+    password: ${APP_ADMIN_PASSWORD:admin123456}        # ⚠️ 演示默认密码，上线务必改
+    display-name: 管理员
+  registration:
+    enabled: ${APP_REGISTRATION_ENABLED:false}        # 注册开关：默认关闭（页面不开放注册，接口也拒绝）
+  jwt:
+    secret: ${APP_JWT_SECRET:ai-workshop-demo-secret-key-please-change-0123456789}   # HS256 密钥，上线必改
+  rate-limit:                                          # 防恶意体验的每日配额（用户 + IP 双维度）
+    chat-per-user-per-day: 50                          # 每用户每天聊天次数
+    chat-per-ip-per-day: 100                           # 每 IP 每天聊天次数（防换号绕过）
+    upload-per-user-per-day: 5                         # 每用户每天文档上传数
+    upload-per-ip-per-day: 10                          # 每 IP 每天文档上传数
+
 # ===== RAG 文件管理 / 向量库 / 离线模式配置 =====
 rag:
   storage:

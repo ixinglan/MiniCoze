@@ -46,7 +46,10 @@ public class RagFileDO {
 
     /** 该文件切片后在向量库中的文档 ID 列表（逗号分隔），用于按文件移除索引 */
     @TableField("doc_ids")
-    private String docIds;
+    private String docIds;    /** 归属用户 id（阶段 9 用户隔离） */
+    @TableField("user_id")
+    private Long userId;
+
 
     @TableField("created_at")
     private LocalDateTime createdAt;

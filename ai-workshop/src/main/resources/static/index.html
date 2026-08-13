@@ -54,6 +54,7 @@
     .send:hover { background: #1f5be0; }
     .empty { color: #aaa; text-align: center; margin-top: 40px; font-size: 14px; }
   </style>
+<script src="auth.js"></script>
 </head>
 <body>
 <nav>
@@ -210,5 +211,6 @@
     // 页面加载：拉取会话列表，自动选中并还原历史
     loadConversations();
   </script>
+<script>requireAuth(); renderUserNav();</script>
 </body>
 </html>

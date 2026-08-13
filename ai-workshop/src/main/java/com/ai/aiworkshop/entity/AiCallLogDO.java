@@ -57,7 +57,10 @@ public class AiCallLogDO {
 
     /** 失败原因（截断到 500 字符） */
     @TableField("error_msg")
-    private String errorMsg;
+    private String errorMsg;    /** 归属用户 id（阶段 9 用户隔离） */
+    @TableField("user_id")
+    private Long userId;
+
 
     @TableField("created_at")
     private LocalDateTime createdAt;

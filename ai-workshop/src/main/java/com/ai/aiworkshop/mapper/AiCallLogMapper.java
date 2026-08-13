@@ -30,8 +30,9 @@ public interface AiCallLogMapper extends BaseMapper<AiCallLogDO> {
                    IFNULL(MAX(duration_ms), 0)           AS maxDurationMs,
                    IFNULL(SUM(total_tokens), 0)          AS totalTokens
             FROM ai_call_log
+            WHERE user_id = #{userId}
             """)
-    Map<String, Object> selectOverallStats();
+    Map<String, Object> selectOverallStats(@Param("userId") Long userId);
 
     /**
      * 按模型分组统计：每个模型的调用次数 / 总 token / 平均耗时。
@@ -43,10 +44,11 @@ public interface AiCallLogMapper extends BaseMapper<AiCallLogDO> {
                    IFNULL(SUM(total_tokens), 0) AS totalTokens,
                    ROUND(IFNULL(AVG(duration_ms), 0)) AS avgDurationMs
             FROM ai_call_log
+            WHERE user_id = #{userId}
             GROUP BY model
             ORDER BY calls DESC
             """)
-    List<Map<String, Object>> selectStatsByModel();
+    List<Map<String, Object>> selectStatsByModel(@Param("userId") Long userId);
 
     /**
      * 最近 N 天按天统计：每天的调用次数 / 成功数 / token 总量。
@@ -61,10 +63,11 @@ public interface AiCallLogMapper extends BaseMapper<AiCallLogDO> {
                    IFNULL(SUM(total_tokens), 0)           AS totalTokens
             FROM ai_call_log
             WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL #{days} - 1 DAY)
+              AND user_id = #{userId}
             GROUP BY DATE(created_at)
             ORDER BY day
             """)
-    List<Map<String, Object>> selectDailyTrend(@Param("days") int days);
+    List<Map<String, Object>> selectDailyTrend(@Param("days") int days, @Param("userId") Long userId);
 
     /**
      * 最近 N 条调用明细（倒序）。
@@ -73,8 +76,9 @@ public interface AiCallLogMapper extends BaseMapper<AiCallLogDO> {
             SELECT id, operation_type, provider, model, prompt_tokens, completion_tokens,
                    total_tokens, duration_ms, success, error_msg, created_at
             FROM ai_call_log
+            WHERE user_id = #{userId}
             ORDER BY id DESC
             LIMIT #{limit}
             """)
-    List<AiCallLogDO> selectRecent(@Param("limit") int limit);
+    List<AiCallLogDO> selectRecent(@Param("limit") int limit, @Param("userId") Long userId);
 }

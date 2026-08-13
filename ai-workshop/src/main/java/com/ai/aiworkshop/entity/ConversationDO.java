@@ -24,7 +24,10 @@ public class ConversationDO {
 
     /** 会话类型：chat（常规聊天）/ rag（知识库问答），用于列表隔离 */
     @TableField("type")
-    private String type;
+    private String type;    /** 归属用户 id（阶段 9 用户隔离） */
+    @TableField("user_id")
+    private Long userId;
+
 
     @TableField("created_at")
     private LocalDateTime createdAt;

@@ -60,6 +60,7 @@
   .diag-box.show { display: block; }
   .diag-box svg { max-width: 100%; height: auto; }
 </style>
+<script src="auth.js"></script>
 </head>
 <body>
 <nav>
@@ -357,5 +358,6 @@
     });
   }
 </script>
+<script>requireAuth(); renderUserNav();</script>
 </body>
 </html>

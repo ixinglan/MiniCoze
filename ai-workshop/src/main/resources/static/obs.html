@@ -55,6 +55,7 @@
   .tooltip { font-size: 11px; color: var(--muted); line-height: 1.6; }
   .code { background:#f0f3f8; border-radius:4px; padding:1px 5px; font-family: "SF Mono", Menlo, monospace; font-size: 11px; }
 </style>
+<script src="auth.js"></script>
 </head>
 <body>
 <nav>
@@ -188,5 +189,6 @@ function renderLogs(rows) {
 
 load();
 </script>
+<script>requireAuth(); renderUserNav();</script>
 </body>
 </html>

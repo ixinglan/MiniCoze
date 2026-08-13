@@ -113,7 +113,9 @@ public class AgentController {
     @GetMapping("/tasks")
     public List<Map<String, Object>> tasks() {
         List<TaskTicketDO> list = taskTicketMapper.selectList(
-                Wrappers.<TaskTicketDO>query().orderByDesc("created_at"));
+                Wrappers.<TaskTicketDO>query()
+                        .eq("user_id", com.ai.aiworkshop.auth.CurrentUser.id())   // 阶段 9：只看自己的工单
+                        .orderByDesc("created_at"));
         return list.stream().map(d -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", d.getId());

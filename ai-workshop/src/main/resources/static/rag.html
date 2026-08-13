@@ -119,6 +119,7 @@
     .file-actions button.primary { background: #2b6cff; color: #fff; border-color: #2b6cff; }
     .file-actions button.primary:disabled { background: #b9c6e0; border-color: #b9c6e0; }
   </style>
+<script src="auth.js"></script>
 </head>
 <body>
 <nav>
@@ -557,5 +558,6 @@
     loadFiles();
     loadConversations();
   </script>
+<script>requireAuth(); renderUserNav();</script>
 </body>
 </html>
