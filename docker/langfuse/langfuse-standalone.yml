@@ -1,0 +1,158 @@
+# ===== Langfuse v3 自托管（阶段 8 可观测：LLM 调用链路追踪平台）=====
+# 用法：docker compose -f docker/langfuse/langfuse-standalone.yml up -d
+# UI：  http://localhost:3000  （初始用户 admin / admin123456）
+# OTLP：http://localhost:3000/api/public/otel  （Spring Boot 侧对接这个端点）
+#
+# 显式 project 名：compose 默认 project 名 = 文件所在目录名（docker），会和同目录下
+# nacos/milvus 的 compose 共用 docker_default 网络；这里改名 langfuse → 网络变
+# langfuse_default，服务名（minio/redis/clickhouse...）彻底隔离，不跟别的 compose 串。
+name: langfuse
+#
+# ⚠️ v3 架构变了（v2 只要 Postgres，v3 需要 4 个存储）：
+#   - Postgres   : 元数据（用户/项目/API key/提示词）
+#   - ClickHouse : 事件数据（traces/observations）—— 缺它启动报 CLICKHOUSE_URL is not configured
+#   - Redis      : 缓存/队列（API key 缓存、异步任务）
+#   - MinIO      : S3 兼容存储（事件上传；小规模会回退直写 ClickHouse，但官方 dev 模板都有，加上最稳）
+#   - langfuse-web + langfuse-worker：同一镜像两个角色（worker 处理异步任务）
+#
+# 密钥格式要求（官方）：
+#   NEXTAUTH_SECRET / SALT : openssl rand -base64 32（≥256 entropy）
+#   ENCRYPTION_KEY         : openssl rand -hex 32（256-bit 十六进制 64 字符）
+services:
+  db:
+    image: postgres:16
+    container_name: langfuse-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: langfuse
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-..}/volumes/langfuse_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24
+    container_name: langfuse-clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_DB: default
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-..}/volumes/langfuse_ch:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: langfuse-redis
+    command: redis-server --requirepass myredispassword
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-..}/volumes/langfuse_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "myredispassword", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z   # 复用本地已有镜像（milvus 同款；镜像=模板，容器完全独立）
+    container_name: langfuse-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniopassword
+    ports:
+      - "9090:9000"               # S3 API（只容器内/本机用）
+      - "127.0.0.1:9001:9001"     # MinIO 控制台
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-..}/volumes/langfuse_minio:/data
+    healthcheck:
+      # 注意：minio 镜像里没有 curl/wget，之前用 curl 导致容器一直 unhealthy（milvus 的 minio 也是同款问题）。
+      # 改用 bash 内置的 /dev/tcp 探测 9000 端口：连接成功退出码 0 = healthy，零外部依赖。
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/9000"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: langfuse-standalone
+    ports:
+      - "3000:3000"
+    depends_on:
+      db: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/langfuse
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@clickhouse:9000/default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"        # 单节点必须 false
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: myredispassword
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: 2M3wVvkjMSLBO2ju89f5GDwSBDr2muQC7bQelBnXUUc=
+      ENCRYPTION_KEY: 9833912cdea6cc1fddc83351e671942a45efd3f17cbc56bbb703b696087ae1a9
+      SALT: dntK1fZT3Ot768C6riVICHOoTN+GMfU128qdOA0DInU=
+      # S3 事件上传：Langfuse 3.2x+ 强制要求（bucket 必填，ZodError），事件经 S3 队列由 worker 消费写 ClickHouse
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniopassword
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      # 首次启动自动创建初始用户与项目（避免手动登录 UI 建项目、拿 key 的麻烦）
+      # ⚠️ Langfuse 3.2x+ 必须先设 LANGFUSE_INIT_ORG_ID，否则所有 LANGFUSE_INIT_* 全部被忽略！
+      # ⚠️ 邮箱必须是合法格式：admin@localhost 会被校验拒绝（Invalid input）
+      LANGFUSE_INIT_ORG_ID: ai-workshop-org
+      LANGFUSE_INIT_USER_EMAIL: admin@example.com
+      LANGFUSE_INIT_USER_PASSWORD: admin123456
+      LANGFUSE_INIT_USER_NAME: admin
+      # ⚠️ 还需要 LANGFUSE_INIT_PROJECT_ID，否则项目不创建、API key 也不会生成
+      LANGFUSE_INIT_PROJECT_ID: ai-workshop
+      LANGFUSE_INIT_PROJECT_NAME: ai-workshop
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-7e0b6b34d4c85993
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-4b2633495487383a6795b13facbc1d33
+
+  # langfuse-worker：消费 S3 事件队列 → 写入 ClickHouse。
+  # ⚠️ 必须用独立镜像 langfuse/langfuse-worker:3（langfuse:3 只含 web，无 worker 包，入口会 MODULE_NOT_FOUND）；
+  #    之前 web+worker 同跑迁移 deadlock 是因为两者都跑 Prisma 迁移，worker 镜像不会重复迁移。
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: langfuse-worker
+    depends_on:
+      db: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/langfuse
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@clickhouse:9000/default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: myredispassword
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: 2M3wVvkjMSLBO2ju89f5GDwSBDr2muQC7bQelBnXUUc=
+      ENCRYPTION_KEY: 9833912cdea6cc1fddc83351e671942a45efd3f17cbc56bbb703b696087ae1a9
+      SALT: dntK1fZT3Ot768C6riVICHOoTN+GMfU128qdOA0DInU=
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniopassword
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"

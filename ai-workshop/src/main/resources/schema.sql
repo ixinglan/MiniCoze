@@ -79,3 +79,24 @@ CREATE TABLE IF NOT EXISTS task_ticket (
     INDEX idx_tt_source (source),
     INDEX idx_tt_conv (conversation_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ===== 阶段 8：AI 调用观测日志表（可观测性）=====
+-- 由自定义 ObservationHandler（AiCallLogObservationHandler）在每次 LLM 调用结束时写入，
+-- 记录每次模型调用的元数据（模型 / 供应商 / token 用量 / 耗时 / 是否成功），供 obs.html 监控页聚合展示。
+-- append-only，不删除；如后续量大可按天归档。
+CREATE TABLE IF NOT EXISTS ai_call_log (
+    id                BIGINT       NOT NULL AUTO_INCREMENT,
+    operation_type    VARCHAR(32)  DEFAULT NULL,   -- 操作类型：chat / image / embedding
+    provider          VARCHAR(32)  DEFAULT NULL,   -- 供应商：deepseek / dashscope / ollama ...
+    model             VARCHAR(100) DEFAULT NULL,   -- 模型名：deepseek-v4-flash / qwen-vl-max ...
+    prompt_tokens     INT          DEFAULT 0,      -- 输入 token 数
+    completion_tokens INT          DEFAULT 0,      -- 输出 token 数
+    total_tokens      INT          DEFAULT 0,      -- 总 token 数（成本估算基础）
+    duration_ms       BIGINT       DEFAULT 0,      -- 本次调用耗时（毫秒）
+    success           TINYINT(1)   NOT NULL DEFAULT 1,  -- 1 成功 / 0 失败
+    error_msg         VARCHAR(500) DEFAULT NULL,   -- 失败原因（截断到 500 字符）
+    created_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_acl_created (created_at),
+    INDEX idx_acl_model (model)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

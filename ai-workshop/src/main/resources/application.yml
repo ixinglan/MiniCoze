@@ -110,8 +110,37 @@ spring:
 #                  service-name: mcp-nacos-server   # 对应 Nacos 中注册的 MCP Server 服务名
 #                  version: 1.0.0                   # 对应 MCP Server 的版本号
 
+    # ===== 阶段 8 可观测：把 Prompt / 回复内容写进观测（供 Langfuse 展示输入输出）=====
+    # 注意：默认 false 是出于隐私考虑（内容可能含敏感信息）；本地学习全开，生产按需。
+    chat:
+      observations:
+        log-prompt: true
+        log-completion: true
+
 server:
   port: 9999
+
+# ===== 阶段 8 可观测：Langfuse 链路追踪（OTLP 导出）=====
+# 前置：docker compose -f docker/langfuse-standalone.yml up -d（UI http://localhost:3000）
+# 机制：Spring AI 的每个模型调用 Observation 会经 Micrometer Tracing → OpenTelemetry
+#       → OTLP 导出到 Langfuse；下方 Authorization 是 Langfuse project 的 public:secret key 的 Base64。
+# 若暂时不想追踪，把 spring.ai.chat.observations 两行改 false 或注释掉 management 段即可（代码零改动）。
+management:
+  tracing:
+    sampling:
+      probability: 1.0                 # 采样率：本地学习 100% 采样；生产建议 0.1 降成本
+  otlp:
+    tracing:
+      endpoint: ${LANGFUSE_OTLP_ENDPOINT:http://localhost:3000/api/public/otel/v1/traces}
+      # ⚠️ 必须带 /v1/traces：Spring Boot 的 OTLP 配置是完整 URL（不会自动拼接路径），
+      #    只写 /api/public/otel 会 404（已 curl 实测：带 /v1/traces 才 200）
+      transport: http                  # Langfuse 只支持 OTLP over HTTP（gRPC 不支持）
+      headers:
+        Authorization: "Basic cGstbGYtN2UwYjZiMzRkNGM4NTk5Mzpzay1sZi00YjI2MzM0OTU0ODczODNhNjc5NWIxM2ZhY2JjMWQzMw=="
+        x-langfuse-ingestion-version: "4"   # 实时摄入（不加最多延迟 10 分钟）
+    metrics:
+      export:
+        enabled: false                 # 只导 trace，metrics 不往 Langfuse 发（避免 404 报错）
 
 # ===== RAG 文件管理 / 向量库 / 离线模式配置 =====
 rag:

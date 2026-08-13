@@ -20,6 +20,29 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 阶段 8 可观测：actuator 提供 ObservationRegistry 自动配置（自定义
+             ObservationHandler 被收集的前提）+ metrics/prometheus 端点 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- 阶段 8 可观测（Langfuse）：Micrometer Tracing 桥接 OpenTelemetry + OTLP 导出器，
+             Spring AI 的 Observation 会自动变成 OTel Span 导出到 Langfuse（版本由 Boot 3.5.11 管理） -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
 
         <!-- 模型 1：DeepSeek V4 适配（Spring AI 官方原生支持，OpenAI 兼容协议） -->
         <dependency>
