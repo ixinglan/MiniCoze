@@ -12,6 +12,9 @@
 - 向量库：默认内存 `SimpleVectorStore`（零依赖）；可切 **Milvus**（docker 起，生产级持久化，维度对齐 bge-m3 的 1024）
 - 文档解析：Apache Tika（`spring-ai-tika-document-reader`），一把覆盖 PDF / Word / Excel / PPT / TXT / MD
 - MCP（阶段 7）：Model Context Protocol，跨进程跨语言工具协议；多模块工程（`ai-workshop` 主应用 + `mcp-nacos-server` MCP Server），stdio（Python FastMCP）+ SSE（Java Server）双路集成
+- 可观测（阶段 8）：Spring AI 原生 **Micrometer Observation**（自定义 Handler 落库 `ai_call_log` + `obs.html` 监控页）+ **OpenTelemetry**（`micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp`）导出到自托管 **Langfuse v3**（Postgres + ClickHouse + Redis + MinIO + web + worker）
+- Guardrails（阶段 8）：基于 **Advisor 手写**（Spring AI 1.1.x 无现成模块）——输入闸（敏感词/越狱/超长拦截，短路返回）+ 输出闸（PII 脱敏），规则全配置化
+- 部署（阶段 8）：单阶段 Dockerfile + `docker/app-deploy.yml` compose 一键起（容器连宿主机已有 MySQL/Milvus/Ollama/Langfuse）
 
 ## 快速开始
 1. 获取 DeepSeek API Key：https://platform.deepseek.com/api_keys
@@ -156,6 +159,14 @@
 - 端点 `GET /api/agent6/mcp/tools` + 演示页 `agent6.html` MCP tab。
 - 详见 `docs/阶段7-知识点总结.md`。
 
+## 阶段 8 工程化（可观测 + Guardrails + Docker 部署）
+- **自建可观测**：自定义 `AiCallLogObservationHandler`（实现 `ObservationHandler<ChatModelObservationContext>`，`@Component` 自动被 ObservationRegistry 收集）→ 每次 LLM 调用落库 `ai_call_log`（模型/供应商/token/耗时/成败）。**必须加 `spring-boot-starter-actuator`**（ObservationRegistry 自动配置前提）。监控页 `obs.html` + `/api/obs/stats` + `/api/obs/logs`。Agent 工具循环的每次模型调用独立成条。
+- **Langfuse（OTel 导出，全链路验证）**：`micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp`（Boot 3.5.11 管理版本）；`management.otlp.tracing.endpoint` 必须写完整 URL 带 `/v1/traces` + Basic Auth(pk:sk base64) + `x-langfuse-ingestion-version: 4`；`spring.ai.chat.observations.log-prompt/completion=true` 内容进 span。**Langfuse v3 自托管 = 6 服务**（Postgres + ClickHouse + Redis + MinIO + web + worker 独立镜像），compose 在 `docker/langfuse/langfuse-standalone.yml`，UI `http://localhost:3000`（admin@example.com / admin123456）。
+- **Guardrails（Advisor 手写）**：`GuardrailAdvisor` 输入闸（敏感词/越狱正则/超长 → 短路返回提示语，模型不参与）+ 输出闸（PII 脱敏）；流式输出脱敏在 `ChatService.stream` 聚合全文后 `maskPii()`（DeepSeek 流式块 `textContent=null` 的坑，见总结文档 5.5）。规则全配置化（`guardrail.*`）。
+- **工程化修复**：MySQL 时间东八区（HikariCP `connection-init-sql: SET time_zone='+08:00'`，必须数值偏移）；删除 `SchemaMigration`（schema.sql 唯一建表来源）；6 页面导航统一。
+- **Docker 部署（单阶段）**：`ai-workshop/Dockerfile`（maven:3.9-eclipse-temurin-17 单镜像构建+运行）+ `docker/app-deploy.yml` compose 一键起（`host.docker.internal` 连宿主机 MySQL/Milvus/Ollama/Langfuse，API Key 走 `.env`，容器版精简 MCP）。
+- 详见 `docs/阶段8-知识点总结.md`。
+
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
@@ -174,6 +185,12 @@
 - [x] 阶段 5：多模态（`spring-ai-alibaba-starter-dashscope` 接入；qwen-vl-max 图片理解 + 通义万相 Wanx 文生图；`multimodal.html` 双模块演示页）
 - [x] 阶段 6：Agent 编排（`spring-ai-alibaba-graph-core` + `spring-ai-alibaba-agent-framework`；ReactAgent 工具循环 + SequentialAgent 顺序 + LlmRoutingAgent 路由 + graph-core 手写意图路由工作流 + graph-core 手写 Supervisor 多智能体；`agent6.html` tab 演示五种形态；主力模型 DeepSeek V4）
 - [x] 阶段 7：MCP 集成（多模块工程；stdio Python FastMCP + SSE Java Server 双路并行；标准 Spring AI SSE Client 直连；`McpConfig` 汇聚 ToolCallback → `mcpChatClient`；`agent6.html` MCP tab；8 个 MCP 工具）
+- [x] 阶段 8：工程化三件套
+  - [x] 可观测·自建：`AiCallLogObservationHandler`（Observation 落库 `ai_call_log`）+ `obs.html` 监控页 + `/api/obs/*`
+  - [x] 可观测·Langfuse：OTel 导出全链路验证（traces 入库），Langfuse v3 六服务自托管（docker/langfuse/）
+  - [x] Guardrails：`GuardrailAdvisor` 输入拦截（敏感词/越狱/超长，短路）+ 输出 PII 脱敏（含流式聚合脱敏）
+  - [x] 工程化修复：MySQL 东八区时区、删除 SchemaMigration、6 页面导航统一
+  - [x] Docker 部署：单阶段 Dockerfile + `docker/app-deploy.yml` compose 一键起
 
 ## 学习计划（每阶段 = 给产品加一块能力）
 - [x] 阶段 1｜多轮对话与记忆：`ChatMemory` + Advisor（会话隔离、历史注入）
@@ -183,7 +200,7 @@
 - [x] 阶段 5｜多模态：通义千问图片理解 + 通义万相文生图
 - [x] 阶段 6｜Agent 编排：`spring-ai-alibaba-graph-core` → `ReactAgent` → 多智能体（Sequential / Routing / Supervisor）
 - [x] 阶段 7｜MCP 集成：标准 MCP（stdio Python Server + SSE Java Server），接入跨进程跨语言工具
-- [ ] 阶段 8｜工程化：可观测（ARMS / Langfuse）、Guardrails、Docker 部署
+- [x] 阶段 8｜工程化：可观测（自建 Observation 落库 + Langfuse OTel）、Guardrails（Advisor 手写护栏）、Docker 部署（单阶段）
 
 ## 参考
 - 官网 / 文档：https://java2ai.com
