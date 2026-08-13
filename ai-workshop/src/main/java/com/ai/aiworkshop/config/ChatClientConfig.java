@@ -43,12 +43,13 @@ public class ChatClientConfig {
     public ChatClient chatClient(@Qualifier("deepSeekChatModel") ChatModel deepSeek,
                                  @Qualifier("ollamaChatModel") ChatModel ollama,
                                  ChatMemory chatMemory,
+                                 GuardrailAdvisor guardrailAdvisor,
                                  @Value("${rag.offline.enabled:false}") boolean offline) {
         // 离线模式：生成改用本地 Ollama LLM（嵌入/向量库本就本地），实现全链路离线可用
         ChatModel gen = offline ? ollama : deepSeek;
         return ChatClient.builder(gen)
                 .defaultSystem("你是一个友好、专业的 AI 助手，使用简体中文回答。")
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build(), guardrailAdvisor)
                 .build();
     }
 
