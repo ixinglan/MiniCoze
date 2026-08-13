@@ -78,7 +78,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
      * 用 INSERT ... ON DUPLICATE KEY UPDATE 保证原子性（并发不超发）。
      */
     private boolean consume(String scopeValue, String scopeType, String action, int limit) {
-        LocalDate day = LocalDate.now();
+        // 显式东八区：LocalDate.now() 用的是 JVM 时区，服务器若为 UTC 会按错日期计数
+        LocalDate day = LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
         // 先查当前计数
         var record = rateLimitMapper.selectOne(
                 Wrappers.<com.ai.aiworkshop.entity.RateLimitCountDO>query()
@@ -95,16 +96,42 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    /**
+     * 所有"消耗模型调用"的端点（按 CHAT 配额限流）。
+     * 查表方式：加新页面/端点时在这里补一行即可，最不容易漏。
+     * ⚠️ 只放"AI 调用"端点；列表/查询类（会话列表、工单列表、MCP 工具列表、文件列表）不放——它们不该扣配额。
+     */
+    private static final java.util.Set<String> CHAT_ENDPOINTS = java.util.Set.of(
+            // 聊天（阶段 1）
+            "/api/chat", "/api/chat/stream",
+            // RAG 问答（阶段 3）
+            "/api/rag", "/api/rag/stream",
+            // Agent 工具调用（阶段 4）
+            "/api/agent/chat",
+            // 多模态（阶段 5）：图片理解 + 文生图
+            "/api/multimodal/describe", "/api/multimodal/generate",
+            // Agent 编排（阶段 6）：5 种形态 + MCP 工具对话
+            "/api/agent6/react", "/api/agent6/sequential", "/api/agent6/routing",
+            "/api/agent6/workflow", "/api/agent6/supervisor", "/api/agent6/mcp/chat"
+    );
+
+    /** 文档上传端点（按 UPLOAD 配额限流）：单文件 + 批量（RagFileController） */
+    private static final java.util.Set<String> UPLOAD_ENDPOINTS = java.util.Set.of(
+            "/api/rag/files", "/api/rag/files/batch"
+    );
+
     /** 根据请求路径 + 方法识别动作：CHAT / UPLOAD / null（不限制） */
     private String resolveAction(HttpServletRequest request) {
         String path = request.getRequestURI();
-        boolean post = "POST".equalsIgnoreCase(request.getMethod());
-        // 聊天：非流式 /api/chat + 流式 /api/chat/stream
-        if (post && (path.equals("/api/chat") || path.equals("/api/chat/stream"))) {
+        String method = request.getMethod();
+        boolean post = "POST".equalsIgnoreCase(method);
+        // AI 调用（CHAT）：非流式端点都是 POST；流式端点（/xx/stream）是 GET
+        // ⚠️ 流式是 GET 不是 POST！之前要求 POST 导致流式聊天/问答从不计数（"限流不生效"的根因）
+        if (CHAT_ENDPOINTS.contains(path) && (post || path.endsWith("/stream"))) {
             return "CHAT";
         }
-        // 上传：/api/rag 单文件 + /api/rag/batch 批量
-        if (post && (path.equals("/api/rag") || path.equals("/api/rag/batch"))) {
+        // 文档上传（UPLOAD）
+        if (post && UPLOAD_ENDPOINTS.contains(path)) {
             return "UPLOAD";
         }
         return null;

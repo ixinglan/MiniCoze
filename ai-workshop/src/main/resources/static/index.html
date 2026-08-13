@@ -193,17 +193,36 @@
       chat.scrollTop = chat.scrollHeight;
 
       const botSpan = appendBubble('bot', '');
-      const es = new EventSource('/api/chat/stream?message=' + encodeURIComponent(text)
-                                  + '&conversationId=' + encodeURIComponent(currentConvId));
-      es.onmessage = (e) => {
-        botSpan.textContent += e.data;
-        chat.scrollTop = chat.scrollHeight;
-      };
-      // 服务端 SseEmitter 完成后连接关闭，触发 onerror：关闭并刷新列表（更新标题/排序）
-      es.onerror = () => {
-        es.close();
-        loadConversations();
-      };
+      // ⚠️ 不能用 EventSource：它是浏览器原生 SSE 客户端，无法带 Authorization 头
+      //   （auth.js 的 fetch 补丁对它无效）→ 登录后流式请求必 401，且拦截器不执行、限流不计数。
+      //   改用 fetch + ReadableStream 手动解析 SSE（data: xxx\n\n 格式）。
+      try {
+        const res = await fetch('/api/chat/stream?message=' + encodeURIComponent(text)
+                                + '&conversationId=' + encodeURIComponent(currentConvId));
+        if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);   // 401 时 auth.js 已自动跳登录
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buf.indexOf('\n\n')) >= 0) {          // SSE 消息以空行分隔
+            const chunk = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            chunk.split('\n').forEach(line => {
+              if (line.startsWith('data:')) {
+                botSpan.textContent += line.slice(5).trim();  // 逐块拼 token（打字机效果）
+              }
+            });
+          }
+          chat.scrollTop = chat.scrollHeight;
+        }
+      } catch (e) {
+        console.error('stream error', e);
+      }
+      loadConversations();   // 流结束后刷新列表（更新标题/排序）
     }
 
     msg.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });

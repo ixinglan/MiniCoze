@@ -5,6 +5,11 @@ spring:
   mvc:
     async:
       request-timeout: 600000   # 10 分钟
+  # 文件上传大小限制：默认 1MB 太小，演示上传 PDF/文档必超（超限抛 MaxUploadSizeExceededException → 500）
+  servlet:
+    multipart:
+      max-file-size: 20MB       # 单个文件最大 20MB
+      max-request-size: 30MB    # 单次请求（多文件合计）最大 30MB
   # ===== 数据源：MySQL 持久化对话记忆（库已手动建好 mini_coze）=====
   datasource:
     url: jdbc:mysql://localhost:3306/mini_coze?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true

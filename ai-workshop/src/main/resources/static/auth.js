@@ -16,10 +16,23 @@ function clearToken() {
   localStorage.removeItem(AIW_TOKEN);
 }
 
-/** 页面加载检查：未登录直接跳登录页 */
+// ===== 未登录自动跳登录页（核心）=====
+// 本脚本在各页面 <head> 里**同步加载**，此时 <body> 还没开始解析渲染，
+// 所以在这里做检查 → 未登录用户在页面内容渲染出来之前就被送到登录页（无闪烁）。
+// 注意：跳转放在文件顶部（getToken 定义之后）立即执行，不依赖页面在 body 里调用 requireAuth。
+(function () {
+  // 登录页自己不能被拦截（否则死循环跳转）
+  if (!location.pathname.endsWith('login.html') && !getToken()) {
+    // 用 replace 而不是 href：不往历史记录里塞"被拦截的页面"，
+    // 用户点浏览器返回键不会又回到这个未登录页面
+    location.replace('/login.html');
+  }
+})();
+
+/** 页面加载检查：未登录直接跳登录页（保留给页面 body 里显式调用，幂等） */
 function requireAuth() {
   if (!getToken()) {
-    location.href = '/login.html';
+    location.replace('/login.html');
   }
 }
 
@@ -71,6 +84,12 @@ function renderUserNav() {
           && !location.pathname.endsWith('login.html')) {
         clearToken();
         location.href = '/login.html';
+      }
+      // 429 = 限流：统一弹窗提示（body 只能读一次，用 clone 读不消耗原响应）
+      if (res.status === 429) {
+        res.clone().json()
+          .then(d => alert(d.message || '操作太频繁，请稍后再试'))
+          .catch(() => alert('操作太频繁，请稍后再试'));
       }
       return res;
     });

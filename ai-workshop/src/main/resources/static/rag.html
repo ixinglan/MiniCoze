@@ -271,14 +271,37 @@
       appendBubble('user', text);
       chat.scrollTop = chat.scrollHeight;
       const botSpan = appendBubble('bot', '');
-      const es = new EventSource('/api/rag/stream?message=' + encodeURIComponent(text)
-                                  + '&conversationId=' + encodeURIComponent(currentConvId));
-      es.onmessage = (e) => {
-        if (e.data === '[DONE]') { es.close(); loadConversations(); return; }
-        botSpan.textContent += e.data;
-        chat.scrollTop = chat.scrollHeight;
-      };
-      es.onerror = () => { es.close(); loadConversations(); };
+      // ⚠️ 不能用 EventSource：无法带 Authorization 头（auth.js 的 fetch 补丁无效）→ 登录后 401
+      //   且限流不计数。改用 fetch + ReadableStream 手动解析 SSE（data: xxx\n\n，[DONE] 结束标记）。
+      try {
+        const res = await fetch('/api/rag/stream?message=' + encodeURIComponent(text)
+                                + '&conversationId=' + encodeURIComponent(currentConvId));
+        if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);   // 401 时 auth.js 已自动跳登录
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let doneFlag = false;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buf.indexOf('\n\n')) >= 0) {          // SSE 消息以空行分隔
+            const chunk = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            chunk.split('\n').forEach(line => {
+              if (!line.startsWith('data:')) return;
+              const data = line.slice(5).trim();
+              if (data === '[DONE]') { doneFlag = true; return; }   // RAG 结束标记
+              if (!doneFlag) botSpan.textContent += data;
+            });
+          }
+          chat.scrollTop = chat.scrollHeight;
+        }
+      } catch (e) {
+        console.error('stream error', e);
+      }
+      loadConversations();   // 流结束后刷新列表（更新标题/排序）
     }
     msg.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
 
@@ -386,6 +409,8 @@
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/rag/files/batch');
+      // ⚠️ XHR 不走 window.fetch，auth.js 的自动带 token 补丁对它无效 → 必须手动加
+      xhr.setRequestHeader('Authorization', 'Bearer ' + getToken());
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           const pct = Math.round(e.loaded / e.total * 100);
@@ -410,6 +435,21 @@
           setTimeout(() => { prog.classList.remove('show'); }, 1200);
           loadFiles();
         } else {
+          // 401 = 认证失败（token 失效/被清）：先提示再跳登录，避免"莫名其妙退出"；
+          // 同时打印响应内容便于诊断——如果后端其实返回的是 429/500，这里就能看出来
+          if (xhr.status === 401) {
+            console.warn('[上传] 401 响应内容:', (xhr.responseText || '').slice(0, 200));
+            alert('登录已失效，请重新登录');
+            clearToken();
+            location.href = '/login.html';
+            return;
+          }
+          // 429 = 限流：弹窗提示（fetch 补丁管不到 XHR，这里单独处理）
+          if (xhr.status === 429) {
+            try {
+              alert(JSON.parse(xhr.responseText).message || '今日上传次数已达上限');
+            } catch (e) { alert('今日上传次数已达上限'); }
+          }
           text.textContent = '上传失败：HTTP ' + xhr.status;
           btn.disabled = false;
         }

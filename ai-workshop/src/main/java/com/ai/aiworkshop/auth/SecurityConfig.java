@@ -37,12 +37,14 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(eh -> eh.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .authorizeHttpRequests(auth -> auth
-                        // 放行：认证相关（登录/注册）、静态页面与资源、健康检查
+                        // 放行：认证相关（登录/注册）、静态页面与资源（*.html/*.js/*.css/图片）、健康检查
+                        // ⚠️ 必须用通配符而不是硬编码页面清单：否则页面引用的 auth.js 等资源会被 401 拦截，
+                        //    页面本身的未登录跳转逻辑因脚本加载失败而完全失效（阶段 9 踩过这个坑）。
                         .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
-                        .requestMatchers("/", "/login.html", "/index.html", "/rag.html", "/agent.html",
-                                "/multimodal.html", "/agent6.html", "/obs.html",
-                                "/favicon.ico", "/actuator/health").permitAll()
-                        // 其余全部要求登录
+                        .requestMatchers("/", "/*.html", "/*.js", "/*.css", "/*.ico",
+                                "/*.png", "/*.jpg", "/*.jpeg", "/*.svg", "/*.gif",
+                                "/actuator/health").permitAll()
+                        // 其余全部要求登录（未认证返回 401）
                         .anyRequest().authenticated())
                 // JWT 过滤器放在用户名密码过滤器之前
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
