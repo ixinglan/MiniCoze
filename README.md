@@ -15,6 +15,7 @@
 - 可观测（阶段 8）：Spring AI 原生 **Micrometer Observation**（自定义 Handler 落库 `ai_call_log` + `obs.html` 监控页）+ **OpenTelemetry**（`micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp`）导出到自托管 **Langfuse v3**（Postgres + ClickHouse + Redis + MinIO + web + worker）
 - Guardrails（阶段 8）：基于 **Advisor 手写**（Spring AI 1.1.x 无现成模块）——输入闸（敏感词/越狱/超长拦截，短路返回）+ 输出闸（PII 脱敏），规则全配置化
 - 部署（阶段 8）：单阶段 Dockerfile + `docker/app-deploy.yml` compose 一键起（容器连宿主机已有 MySQL/Milvus/Ollama/Langfuse）
+- 用户体系（阶段 9）：**Spring Security + JWT**（jjwt 0.12，无状态认证）+ BCrypt 密码 + `users` 表角色（ADMIN/USER）；6 类业务数据按 `user_id` 全链路隔离；`rate_limit_count` 表限流（用户+IP 双维度按天配额）；注册开关（默认关、Service 层强校验）；`login.html` + `auth.js`（monkey-patch fetch 自动带 token / 401 跳登录 / 未登录自动跳转）
 
 ## 快速开始
 1. 获取 DeepSeek API Key：https://platform.deepseek.com/api_keys
@@ -167,6 +168,14 @@
 - **Docker 部署（单阶段）**：`ai-workshop/Dockerfile`（maven:3.9-eclipse-temurin-17 单镜像构建+运行）+ `docker/app-deploy.yml` compose 一键起（`host.docker.internal` 连宿主机 MySQL/Milvus/Ollama/Langfuse，API Key 走 `.env`，容器版精简 MCP）。
 - 详见 `docs/阶段8-知识点总结.md`。
 
+## 阶段 9 用户体系与演示加固（登录 + 隔离 + 限流）
+- **认证**：Spring Security + JWT（无状态，HS384 由密钥长度自动选）——`JwtService`（生成/解析）/ `JwtAuthFilter`（Bearer → SecurityContext，Claims 放 details）/ `CurrentUser.id()`（Service 层隔离收口）。SecurityConfig 放行登录注册 + 静态资源（**必须通配符 `/*.html` `/*.js` 等，硬编码页面清单会漏掉脚本导致未登录不跳转**）+ 健康检查，其余 `/api/**` 全部登录，未认证 401。
+- **用户隔离**：6 张业务表（conversation/chat_log/chat_memory/rag_file/task_ticket/ai_call_log）加 `user_id`，老数据归 admin（SchemaMigration 幂等迁移）；Service 层写入带 userId、查询按 userId 过滤、操作前 `checkOwnership` 越权校验；观测页按用户隔离（obs 只看自己的调用记录）；种子知识库全局共享。
+- **限流**：`rate_limit_count` 表 + `RateLimitInterceptor`——用户+IP 双维度按天配额（聊天 50/100 次/天、上传 5/10 次/天，yml 可调），`INSERT ... ON DUPLICATE KEY UPDATE` 原子计数，超限 429。
+- **Admin + 注册开关**：启动时无 admin 自动创建（环境变量 `APP_ADMIN_USERNAME/PASSWORD`）；`app.registration.enabled` 默认 false，**Service 层强校验**防直调接口（403「注册未开放」）。
+- **前端**：`login.html`（无注册入口）+ `auth.js`（monkey-patch fetch 自动带 token + 401 跳登录 + 文件加载即执行未登录跳转，无闪烁）；7 个页面（含 ticket.html）统一接入。
+- 详见 `docs/阶段9-知识点总结.md`。
+
 ## 已完成
 - [x] 阶段 0：ChatClient 接入 DeepSeek + SSE 流式对话 + 极简网页
 - [x] 阶段 0 扩展：双模型骨架（DeepSeek 对话 + Ollama embedding）
@@ -186,6 +195,7 @@
 - [x] 阶段 6：Agent 编排（`spring-ai-alibaba-graph-core` + `spring-ai-alibaba-agent-framework`；ReactAgent 工具循环 + SequentialAgent 顺序 + LlmRoutingAgent 路由 + graph-core 手写意图路由工作流 + graph-core 手写 Supervisor 多智能体；`agent6.html` tab 演示五种形态；主力模型 DeepSeek V4）
 - [x] 阶段 7：MCP 集成（多模块工程；stdio Python FastMCP + SSE Java Server 双路并行；标准 Spring AI SSE Client 直连；`McpConfig` 汇聚 ToolCallback → `mcpChatClient`；`agent6.html` MCP tab；8 个 MCP 工具）
 - [x] 阶段 8：工程化三件套
+- [x] 阶段 9：用户体系与演示加固（Spring Security + JWT 登录；6 类数据 user_id 全链路隔离；用户+IP 双维度限流；注册开关 + Admin 初始化；login.html + auth.js 前端认证）
   - [x] 可观测·自建：`AiCallLogObservationHandler`（Observation 落库 `ai_call_log`）+ `obs.html` 监控页 + `/api/obs/*`
   - [x] 可观测·Langfuse：OTel 导出全链路验证（traces 入库），Langfuse v3 六服务自托管（docker/langfuse/）
   - [x] Guardrails：`GuardrailAdvisor` 输入拦截（敏感词/越狱/超长，短路）+ 输出 PII 脱敏（含流式聚合脱敏）
@@ -201,6 +211,7 @@
 - [x] 阶段 6｜Agent 编排：`spring-ai-alibaba-graph-core` → `ReactAgent` → 多智能体（Sequential / Routing / Supervisor）
 - [x] 阶段 7｜MCP 集成：标准 MCP（stdio Python Server + SSE Java Server），接入跨进程跨语言工具
 - [x] 阶段 8｜工程化：可观测（自建 Observation 落库 + Langfuse OTel）、Guardrails（Advisor 手写护栏）、Docker 部署（单阶段）
+- [x] 阶段 9｜用户体系与演示加固：Spring Security + JWT 登录、user_id 全链路隔离、用户+IP 限流、注册开关与 Admin 初始化、前端统一认证
 
 ## 参考
 - 官网 / 文档：https://java2ai.com
